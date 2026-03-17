@@ -1,0 +1,10 @@
+# Log files (loguru; file logging disabled in app/main.py)
+app_*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
