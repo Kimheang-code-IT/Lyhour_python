@@ -4,8 +4,8 @@ from pathlib import Path
 from PyQt6.QtGui import QPalette, QColor
 from PyQt6.QtWidgets import QWidget, QGraphicsDropShadowEffect
 
-# From app/core, assets are at app/assets
-_ASSETS = Path(__file__).resolve().parent.parent / "assets"
+# From app/core, icon assets are at app/assets/icon
+_ASSETS = Path(__file__).resolve().parent.parent / "assets" / "icon"
 _ARROW_DOWN_ASSET = _ASSETS / "arrow-down.png"
 
 # Gray shades (backgrounds)

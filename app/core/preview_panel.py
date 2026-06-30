@@ -5,8 +5,8 @@ from PyQt6.QtWidgets import QVBoxLayout, QLabel, QFrame, QSplitter, QSizePolicy
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QPainter, QColor
 
-# From app/core, assets are at app/assets
-_ASSETS = Path(__file__).resolve().parent.parent / "assets"
+# From app/core, image assets are at app/assets/image
+_IMAGE_ASSETS = Path(__file__).resolve().parent.parent / "assets" / "image"
 
 
 class PreviewPanel(QFrame):
@@ -73,7 +73,7 @@ class PreviewPanel(QFrame):
             self._update_preview_pixmap(self._default_pixmap)
 
     def _default_image_path(self) -> Path:
-        return _ASSETS / "road.jpg"
+        return _IMAGE_ASSETS / "road.jpg"
 
     def _set_default_preview_image(self):
         path = self._default_image_path()
@@ -114,9 +114,9 @@ class PreviewPanel(QFrame):
             self._update_preview_pixmap(pixmap)
 
     def set_preview_from_asset(self, filename: str):
-        """Set preview image from an asset file in app/assets."""
+        """Set preview image from an asset file in app/assets/image."""
         try:
-            path = _ASSETS / filename
+            path = _IMAGE_ASSETS / filename
             pm = QPixmap(str(path)) if path.is_file() else None
         except Exception:
             pm = None

@@ -1,21 +1,24 @@
 """
 Build KIEC ENGINEERING & CONSULTING as a Windows .exe with the KIEC logo as the application icon.
 
-Icon/shortcut: uses app/assets/KIEC - 27062025.jpg to create Logo.ico (exe and shortcut icon).
+Icon/shortcut: uses app/assets/image/KIEC - 27062025.jpg to create Logo.ico (exe and shortcut icon).
 
-1. Run checks (optional):  python check_before_build.py
-2. Build:                 python build_exe.py
+1. Run checks (optional):  python scripts/check_before_build.py
+2. Build:                 python scripts/build_exe.py
 
 Requirements: pip install pyinstaller pillow
 """
 import sys
+import os
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ASSETS = PROJECT_ROOT / "app" / "assets"
+IMAGE_ASSETS = ASSETS / "image"
+ICON_ASSETS = ASSETS / "icon"
 # Logo source: KIEC image (build outputs Logo.ico for the .exe)
-LOGO_SRC = ASSETS / "KIEC - 27062025.jpg"
-LOGO_ICO = ASSETS / "Logo.ico"
+LOGO_SRC = IMAGE_ASSETS / "KIEC - 27062025.jpg"
+LOGO_ICO = ICON_ASSETS / "Logo.ico"
 
 
 def make_ico():
@@ -50,10 +53,11 @@ def build_exe():
             make_ico()
         except Exception as e:
             print(f"Logo.ico not created ({e}). Building .exe without custom icon.")
-    spec = PROJECT_ROOT / "app_architect.spec"
+    spec = PROJECT_ROOT / "scripts" / "app_architect.spec"
     if not spec.exists():
         print(f"Spec file not found: {spec}")
         sys.exit(1)
+    os.chdir(PROJECT_ROOT)
     PyInstaller.__main__.run([
         str(spec),
         "--noconfirm",
@@ -63,7 +67,7 @@ def build_exe():
 
 
 if __name__ == "__main__":
-    # Create Logo.ico from app/assets/KIEC - 27062025.jpg first (for exe/shortcut icon)
+    # Create Logo.ico from app/assets/image/KIEC - 27062025.jpg first (for exe/shortcut icon)
     try:
         make_ico()
     except Exception as e:

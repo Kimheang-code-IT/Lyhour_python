@@ -1,25 +1,26 @@
 # PyInstaller spec for KIEC ENGINEERING & CONSULTING (.exe with Logo icon)
-# Run: python build_exe.py  (creates Logo.ico and runs this spec)
+# Run: python scripts/build_exe.py  (creates Logo.ico and runs this spec)
 
 import os
 import sys
 
 block_cipher = None
+project_root = os.path.abspath(os.path.join(SPECPATH, '..'))
 
-# Bundle app/assets (KIEC logo, arrow-down, arrow-right, road.jpg, etc.) for runtime
-assets_src = os.path.join('app', 'assets')
+# Bundle app/assets (images, icons, road.jpg, etc.) for runtime
+assets_src = os.path.join(project_root, 'app', 'assets')
 datas = [(assets_src, 'app/assets')]
 
 # Include Logo.ico in datas so it's available; use as exe icon on Windows
-logo_ico = os.path.join('app', 'assets', 'Logo.ico')
+logo_ico = os.path.join(project_root, 'app', 'assets', 'icon', 'Logo.ico')
 if sys.platform == 'win32' and os.path.isfile(logo_ico):
     icon = logo_ico
 else:
     icon = None
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [os.path.join(project_root, 'app', 'main.py')],
+    pathex=[project_root],
     binaries=[],
     datas=datas,
     hiddenimports=[

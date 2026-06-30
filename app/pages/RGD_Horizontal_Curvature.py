@@ -30,8 +30,6 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QMessageBox,
     QFileDialog,
-    QDoubleSpinBox,
-    QSpinBox,
     QStackedWidget,
     QComboBox,
     QSizePolicy,
@@ -41,6 +39,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtCore import Qt
 
+from app.core.components.form_controls import make_combo, make_double_spin
+
 
 try:
     from app.config.settings import APP_NAME
@@ -48,67 +48,12 @@ except Exception:
     APP_NAME = "Report"
 
 
-# Optional Fluent Widgets (safe fallback) — inputs styled like PyQt6-Fluent-Widgets
 try:
-    from qfluentwidgets import (
-        ComboBox as FluentComboBox,
-        EditableComboBox as FluentEditableComboBox,
-        SpinBox as FluentSpinBox,
-        DoubleSpinBox as FluentDoubleSpinBox,
-        SubtitleLabel,
-
-    )
+    from qfluentwidgets import SubtitleLabel
     _HAS_FLUENT = True
 except Exception:
-    FluentComboBox = None  # type: ignore[assignment]
-    FluentEditableComboBox = None  # type: ignore[assignment]
-    FluentSpinBox = None  # type: ignore[assignment]
-    FluentDoubleSpinBox = None  # type: ignore[assignment]
     SubtitleLabel = None  # type: ignore[assignment]
-
     _HAS_FLUENT = False
-
-
-def _make_double_spin() -> QDoubleSpinBox:
-    """Fluent DoubleSpinBox when available, else QDoubleSpinBox. No increment/decrement icons."""
-    if _HAS_FLUENT and FluentDoubleSpinBox is not None:
-        w = FluentDoubleSpinBox()
-        w.setSymbolVisible(False)  # hide up/down arrow buttons
-    else:
-        w = QDoubleSpinBox()
-        w.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
-    return w
-
-
-def _make_spin_no_buttons(w):
-    if isinstance(w, QSpinBox):
-        w.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-    else:
-        w.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
-    return w
-
-
-def _make_combo(items, *, editable: bool = False):
-    """
-    Create a combo with Fluent style if available, else fallback to QComboBox.
-    - If editable=False: user selection only (recommended)
-    - If editable=True: can type (EditableComboBox)
-    """
-    if _HAS_FLUENT:
-        if editable and FluentEditableComboBox is not None:
-            cb = FluentEditableComboBox()
-        else:
-            cb = FluentComboBox() if FluentComboBox is not None else QComboBox()
-    else:
-        cb = QComboBox()
-
-    try:
-        cb.setEditable(bool(editable) if isinstance(cb, QComboBox) else False)
-    except Exception:
-        pass
-
-    cb.addItems(list(items))
-    return cb
 
 
 # Vehicle speed options (km/h) — discrete values per Table 7.5 / 7.6
@@ -200,14 +145,14 @@ class RGDHorizontalCurvaturePage(QWidget):
 
         # Vehicle Speed (dropdown: 25 km/h, 30 km/h, ..., 130 km/h)
         speed_items = [f"{s} km/h" for s in VEHICLE_SPEED_OPTIONS]
-        self.v_combo = _make_combo(speed_items, editable=False)
+        self.v_combo = make_combo(speed_items, editable=False)
         self.v_combo.setCurrentIndex(speed_items.index("90 km/h"))  # default 90 km/h
         self.v_combo.currentTextChanged.connect(self._on_input_changed)
         add_labeled_row(form_grid, row, "Vehicle Speed V =", self.v_combo, ROW_HEIGHT)
         row += 1
 
         # Superelevation (e_max >= 2.5%) — Fluent DoubleSpinBox when available
-        self.e_spin = _make_double_spin()
+        self.e_spin = make_double_spin()
         self.e_spin.setRange(2.5, 20)
         self.e_spin.setDecimals(2)
         self.e_spin.setSuffix(" %")
@@ -217,7 +162,7 @@ class RGDHorizontalCurvaturePage(QWidget):
         row += 1
 
         # Surface Type (Selection only recommended)
-        self.surface_combo = _make_combo(["Sealed roads", "Unsealed roads"], editable=False)
+        self.surface_combo = make_combo(["Sealed roads", "Unsealed roads"], editable=False)
         self.surface_combo.setCurrentIndex(0)
         self.surface_combo.currentTextChanged.connect(self._on_surface_changed)
         add_labeled_row(form_grid, row, "Surface Type =", self.surface_combo, ROW_HEIGHT)
@@ -225,14 +170,14 @@ class RGDHorizontalCurvaturePage(QWidget):
 
         # Vehicle Type (depends on Surface: Sealed → Truck/Car; Unsealed → Cars and Trucks)
         vehicles, frictions = SURFACE_OPTIONS["Sealed roads"]
-        self.vehicle_combo = _make_combo(vehicles, editable=False)
+        self.vehicle_combo = make_combo(vehicles, editable=False)
         self.vehicle_combo.setCurrentIndex(0)
         self.vehicle_combo.currentTextChanged.connect(self._on_input_changed)
         add_labeled_row(form_grid, row, "Vehicle Type =", self.vehicle_combo, ROW_HEIGHT)
         row += 1
 
         # Friction type (depends on Surface: Sealed → Des max/Ads max; Unsealed → Des max)
-        self.friction_type_combo = _make_combo(frictions, editable=False)
+        self.friction_type_combo = make_combo(frictions, editable=False)
         self.friction_type_combo.setToolTip("Des max = Desired Maximum; Ads max = Absolute Maximum")
         self.friction_type_combo.currentTextChanged.connect(self._on_friction_changed)
 
@@ -250,14 +195,14 @@ class RGDHorizontalCurvaturePage(QWidget):
         row += 1
 
         # Side friction factor (from Table 7.5; options depend on V, surface, vehicle, friction type)
-        self.f_combo = _make_combo(["0.12"], editable=False)  # populated in _update_f_combo_from_table
+        self.f_combo = make_combo(["0.12"], editable=False)  # populated in _update_f_combo_from_table
         self.f_combo.setToolTip("From Table 7.5 Recommended side friction factors")
         self.f_combo.currentTextChanged.connect(self._on_input_changed)
         add_labeled_row(form_grid, row, "Maximum Side friction factor f_min=", self.f_combo, ROW_HEIGHT)
         row += 1
 
         # Grading (>= 3%) — Fluent DoubleSpinBox when available
-        self.grading_spin = _make_double_spin()
+        self.grading_spin = make_double_spin()
         self.grading_spin.setRange(3.0, 100.0)
         self.grading_spin.setDecimals(2)
         self.grading_spin.setSuffix(" %")
@@ -475,7 +420,7 @@ class RGDHorizontalCurvaturePage(QWidget):
 
         image_path = None
         try:
-            path = Path(__file__).resolve().parent.parent / "assets" / "road.jpg"
+            path = Path(__file__).resolve().parent.parent / "assets" / "image" / "road.jpg"
             if path.is_file():
                 image_path = str(path)
         except Exception:

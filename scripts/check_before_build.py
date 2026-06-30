@@ -1,17 +1,22 @@
 """
 Run this before building the .exe to verify everything is ready.
-Uses app/assets/KIEC - 27062025.jpg for the exe/shortcut icon (Logo.ico).
+Uses app/assets/image/KIEC - 27062025.jpg for the exe/shortcut icon (Logo.ico).
 Exit code 0 = all checks passed; non-zero = fix issues then run again.
 """
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 ASSETS = PROJECT_ROOT / "app" / "assets"
-LOGO_SRC = ASSETS / "KIEC - 27062025.jpg"
-LOGO_ICO = ASSETS / "Logo.ico"
-SPEC_FILE = PROJECT_ROOT / "app_architect.spec"
-MAIN_SCRIPT = PROJECT_ROOT / "main.py"
+IMAGE_ASSETS = ASSETS / "image"
+ICON_ASSETS = ASSETS / "icon"
+LOGO_SRC = IMAGE_ASSETS / "KIEC - 27062025.jpg"
+LOGO_ICO = ICON_ASSETS / "Logo.ico"
+SPEC_FILE = PROJECT_ROOT / "scripts" / "app_architect.spec"
+MAIN_SCRIPT = PROJECT_ROOT / "app" / "main.py"
 
 
 def check(condition: bool, message: str) -> bool:
@@ -58,7 +63,7 @@ def main() -> int:
     # 4) Spec and main script
     if not check(SPEC_FILE.is_file(), f"Spec file exists: {SPEC_FILE.name}"):
         all_ok = False
-    if not check(MAIN_SCRIPT.is_file(), f"Entry script exists: {MAIN_SCRIPT.name}"):
+    if not check(MAIN_SCRIPT.is_file(), f"Entry script exists: {MAIN_SCRIPT.relative_to(PROJECT_ROOT)}"):
         all_ok = False
 
     # 5) PyInstaller
@@ -79,7 +84,7 @@ def main() -> int:
 
     # 7) Assets used at runtime (optional; app may still run without some)
     for name in ["KIEC_logo.png", "road.jpg"]:
-        p = ASSETS / name
+        p = IMAGE_ASSETS / name
         if p.is_file():
             print(f"  OK: Runtime asset: {name}")
         else:
@@ -87,9 +92,9 @@ def main() -> int:
 
     print()
     if all_ok:
-        print("All checks passed. Run:  python build_exe.py")
+        print("All checks passed. Run:  python scripts/build_exe.py")
         return 0
-    print("Fix the issues above, then run:  python check_before_build.py")
+    print("Fix the issues above, then run:  python scripts/check_before_build.py")
     return 1
 
 

@@ -64,9 +64,8 @@ class SearchPalette(QFrame):
 
         self.setStyleSheet("""
             #searchPalette {
-                background-color: #252526;
                 border: 1px solid #3e3e40;
-                border-radius: 10px;
+                border-radius: 7px;
             }
 
             /* Header */

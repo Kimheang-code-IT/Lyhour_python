@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QShowEvent, QImage, QPixmap
 from PyQt6.QtCore import Qt
 
+from app.core.components.form_controls import make_spin_no_buttons
 from app.services.building_calc import compute
 
 try:
@@ -64,10 +65,6 @@ class CalculatorPage(QWidget):
             form_grid.addWidget(QLabel(label_text), row, 0)
             form_grid.addWidget(widget, row, 1)
             row += 1
-
-        def make_spin_no_buttons(w):
-            w.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons if isinstance(w, QSpinBox) else QDoubleSpinBox.ButtonSymbols.NoButtons)
-            return w
 
         self.length_spin = make_spin_no_buttons(QDoubleSpinBox())
         self.length_spin.setRange(0.001, 999999)
@@ -203,7 +200,7 @@ class CalculatorPage(QWidget):
         from app.services.report_generator import generate_pdf
         image_path = None
         try:
-            path = Path(__file__).resolve().parent.parent / "assets" / "road.jpg"
+            path = Path(__file__).resolve().parent.parent / "assets" / "image" / "road.jpg"
             if path.is_file():
                 image_path = str(path)
         except Exception:

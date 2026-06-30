@@ -2,7 +2,7 @@
 
 from app.widgets.button import primary_button, secondary_button
 from app.widgets.labeled_input import add_labeled_row, LabeledInput
-from app.widgets.labeled_select import add_labeled_select_row, LabeledSelect
+from app.widgets.labeled_select import add_labeled_select_row, LabeledSelect, make_design_year_combo
 from app.widgets.dialog import info, warning, open_file, save_file
 
 # Optional Fluent inputs for pages that want Fluent ComboBox/SpinBox
@@ -26,6 +26,7 @@ __all__ = [
     "LabeledInput",
     "add_labeled_select_row",
     "LabeledSelect",
+    "make_design_year_combo",
     "info",
     "warning",
     "open_file",

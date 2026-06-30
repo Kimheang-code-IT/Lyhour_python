@@ -28,8 +28,7 @@ def _app_icon_path() -> Path | None:
         base = Path(__file__).resolve().parent.parent
     assets = base / "app" / "assets"
     # Prefer KIEC_logo.png (PNG with transparency); fallback to Logo.ico
-    for name in ("KIEC_logo.png", "Logo.ico"):
-        path = assets / name
+    for path in (assets / "image" / "KIEC_logo.png", assets / "icon" / "Logo.ico"):
         if path.is_file():
             return path
     return None
@@ -54,7 +53,7 @@ def main():
     window = MainWindow()
     if logo_path is not None:
         window.setWindowIcon(QIcon(str(logo_path)))
-    window.show()
+    window.showMaximized()
     sys.exit(app.exec())
 
 

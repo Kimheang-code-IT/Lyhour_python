@@ -14,7 +14,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QShortcut, QKeySequence, QColor, QIcon, QAction
 
 from app.config.topbar_actions import OTHER_BUTTONS
-from app.core.search_palette import SearchPalette
+from app.core.search import SearchPalette
 
 try:
     import qtawesome as qta  # type: ignore[import-untyped]
@@ -101,8 +101,8 @@ class TopbarNav(QFrame):
         search_bar.setMinimumWidth(400)
         search_bar.setMaximumWidth(420)
         search_bar.setStyleSheet("""
-            #centerSearchBar { background-color: #3c3c3c; border: none; border-radius: 4px; outline: none; outline-color: transparent; }
-            #centerSearchBar:focus-within { background-color: #404040; }
+            #centerSearchBar { border: 1px solid #3e3e40; border-radius: 10px; outline: none; outline-color: transparent; }
+            #centerSearchBar:focus-within { border: 1px solid #3e3e40; }
         """)    
         search_layout = QHBoxLayout(search_bar)
         search_layout.setContentsMargins(10, 0, 10, 0)

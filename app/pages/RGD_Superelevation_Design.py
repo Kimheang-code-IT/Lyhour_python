@@ -6,24 +6,17 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QScrollArea,
-    QDoubleSpinBox,
-    QComboBox,
     QSizePolicy,
 )
 from PyQt6.QtGui import QShowEvent
 
+from app.core.components.form_controls import make_combo, make_double_spin
 from app.widgets.labeled_input import add_labeled_row
 
 try:
-    from qfluentwidgets import (
-        ComboBox as FluentComboBox,
-        DoubleSpinBox as FluentDoubleSpinBox,
-        SubtitleLabel,
-    )
+    from qfluentwidgets import SubtitleLabel
     _HAS_FLUENT = True
 except Exception:
-    FluentComboBox = None  # type: ignore[assignment]
-    FluentDoubleSpinBox = None  # type: ignore[assignment]
     SubtitleLabel = None  # type: ignore[assignment]
     _HAS_FLUENT = False
 
@@ -31,27 +24,6 @@ VEHICLE_SPEED_OPTIONS = [f"{v} km/h" for v in (25, 30, 40, 50, 60, 70, 80, 90, 1
 ROAD_CLASSIFICATION_OPTIONS = ["Class I", "Class II", "Class III", "Rural", "Urban"]
 
 ROW_HEIGHT = 36
-
-
-def _make_double_spin() -> QDoubleSpinBox:
-    """Numeric input without increment/decrement icons."""
-    if _HAS_FLUENT and FluentDoubleSpinBox is not None:
-        w = FluentDoubleSpinBox()
-        w.setSymbolVisible(False)
-    else:
-        w = QDoubleSpinBox()
-        w.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
-    return w
-
-
-def _make_combo(items: list[str]):
-    """Dropdown with Fluent style when available."""
-    if _HAS_FLUENT and FluentComboBox is not None:
-        cb = FluentComboBox()
-    else:
-        cb = QComboBox()
-    cb.addItems(items)
-    return cb
 
 
 class RGDSuperelevationDesignPage(QWidget):
@@ -86,13 +58,13 @@ class RGDSuperelevationDesignPage(QWidget):
         row = 0
 
         # Vehicle speed
-        self.vehicle_speed_combo = _make_combo(VEHICLE_SPEED_OPTIONS)
+        self.vehicle_speed_combo = make_combo(VEHICLE_SPEED_OPTIONS)
         self.vehicle_speed_combo.setCurrentIndex(VEHICLE_SPEED_OPTIONS.index("80 km/h"))
         add_labeled_row(form_grid, row, "Vehicle speed V =", self.vehicle_speed_combo, ROW_HEIGHT)
         row += 1
 
         # Gross fall e1
-        self.e1_spin = _make_double_spin()
+        self.e1_spin = make_double_spin()
         self.e1_spin.setRange(-10, 10)
         self.e1_spin.setDecimals(2)
         self.e1_spin.setSuffix(" %")
@@ -101,7 +73,7 @@ class RGDSuperelevationDesignPage(QWidget):
         row += 1
 
         # Pavement Superelevation (e_max)
-        self.e_max_spin = _make_double_spin()
+        self.e_max_spin = make_double_spin()
         self.e_max_spin.setRange(2.5, 20)
         self.e_max_spin.setDecimals(2)
         self.e_max_spin.setSuffix(" %")
@@ -112,12 +84,12 @@ class RGDSuperelevationDesignPage(QWidget):
         row += 1
 
         # Road Classification (dropdown)
-        self.road_class_combo = _make_combo(ROAD_CLASSIFICATION_OPTIONS)
+        self.road_class_combo = make_combo(ROAD_CLASSIFICATION_OPTIONS)
         add_labeled_row(form_grid, row, "Road Classification =", self.road_class_combo, ROW_HEIGHT)
         row += 1
 
         # Lane width WR
-        self.lane_width_spin = _make_double_spin()
+        self.lane_width_spin = make_double_spin()
         self.lane_width_spin.setRange(2.5, 5.0)
         self.lane_width_spin.setDecimals(2)
         self.lane_width_spin.setSuffix(" m")

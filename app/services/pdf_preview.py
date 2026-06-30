@@ -27,7 +27,7 @@ def create_temp_pdf(
     fd, pdf_path = tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
     from pathlib import Path
-    logo_path = Path(__file__).parent.parent / "assets" / "kiec_logo.png"
+    logo_path = Path(__file__).parent.parent / "assets" / "image" / "KIEC_logo.png"
     generate_pdf(
         pdf_path,
         title=title,
@@ -78,7 +78,7 @@ def create_temp_pdf_async(
 ) -> None:
     """Create temp PDF in QThreadPool; call on_done(pdf_path) on main thread when done."""
     from pathlib import Path
-    logo_path = Path(__file__).parent.parent / "assets" / "kiec_logo.png"
+    logo_path = Path(__file__).parent.parent / "assets" / "image" / "KIEC_logo.png"
     class _Task(QRunnable):
         def run(self):
             try:

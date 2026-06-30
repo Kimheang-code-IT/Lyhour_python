@@ -4,8 +4,8 @@ from pathlib import Path
 from PyQt6.QtWidgets import QComboBox, QWidget, QHBoxLayout, QLabel
 from PyQt6.QtCore import Qt
 
-# From app/widgets, assets are at app/assets
-_ASSETS = Path(__file__).resolve().parent.parent / "assets"
+# From app/widgets, icon assets are at app/assets/icon
+_ASSETS = Path(__file__).resolve().parent.parent / "assets" / "icon"
 _ARROW_DOWN_ASSET = _ASSETS / "arrow-down.png"
 
 try:
@@ -14,9 +14,11 @@ try:
 except ImportError:
     _HAS_FLUENT = False
 
+DESIGN_YEAR_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40]
+
 
 def _combo_dropdown_arrow_style() -> str:
-    """Stylesheet to use app/assets/arrow-down.png as ComboBox dropdown arrow."""
+    """Stylesheet to use app/assets/icon/arrow-down.png as ComboBox dropdown arrow."""
     if not _ARROW_DOWN_ASSET.exists():
         return ""
     try:
@@ -52,6 +54,13 @@ def add_labeled_select_row(grid, row: int, label_text: str, combo, row_height: i
     lbl = _make_label(label_text, row_height)
     grid.addWidget(lbl, row, 0)
     grid.addWidget(combo, row, 1)
+
+
+def make_design_year_combo() -> QComboBox:
+    """Create a reusable design-year select with 5-year interval options."""
+    combo = QComboBox()
+    combo.addItems([f"{year} year" for year in DESIGN_YEAR_OPTIONS])
+    return combo
 
 
 class LabeledSelect(QWidget):
