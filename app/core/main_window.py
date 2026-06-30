@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QLabel,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
 from app.core.Sidebar_left import SidebarLeft
 from app.core.Topbar_nav import TopbarNav
@@ -25,7 +25,19 @@ from app.core.quick_panel import QuickPanel
 from app.core.theme import apply_drop_shadow
 from app.services.pdf_export import export_pdf
 from app.services.traffic_excel import build_summary_total_row
-from app.services.traffic_aadt_pcu import AadtPcuResult, compute_aadt_pcu
+from app.services.traffic_aadt_pcu import (
+    AadtPcuResult,
+    compute_aadt_pcu,
+    compute_aadt_pcu_from_direct_input,
+    parse_design_years,
+)
+from app.services.traffic_lane_projection import (
+    DEFAULT_GROWTH_RATE,
+    LaneProjectionResult,
+    compute_lane_projection_from_workbook_data,
+)
+from app.services.traffic_esal import EsalResult, compute_esal_from_workbook_data
+from app.services.traffic_quick_results import build_traffic_quick_results
 from app.config.settings import APP_NAME, APP_DISPLAY_NAME, PROJECT_EXTENSION, PROJECT_FILTER
 
 # Page order: 0=Input, 1=Detail Result, 2=Horizontal Curvature, 3=Superelevation Design
@@ -130,6 +142,14 @@ class MainWindow(QMainWindow):
 
         self.calc_state = {"inputs": {}, "results": {}}
         self.current_file_path: str | None = None
+        self._pending_road_classification: tuple[str | None, int | None, int | None] = (
+            None,
+            None,
+            None,
+        )
+        self._pending_lane_projection: LaneProjectionResult | None = None
+        self._pending_esal_result: EsalResult | None = None
+        self._pending_aadt_pcu_result: AadtPcuResult | None = None
 
         self.title_bar.connect_file_actions(self)
         self.title_bar.toggleSidebarRequested.connect(self.toggle_sidebar)
@@ -147,6 +167,8 @@ class MainWindow(QMainWindow):
         self._ensure_page(0)
         self.stack.setCurrentIndex(0)
         self._apply_preview_visibility(0)
+        QTimer.singleShot(0, self.refresh_road_classification)
+        QTimer.singleShot(0, self.refresh_traffic_quick_results)
 
     def _on_page_changed(self, index: int):
         self._ensure_page(index)
@@ -182,6 +204,11 @@ class MainWindow(QMainWindow):
             self._page_widgets[index] = page
             self.stack.removeWidget(self.stack.widget(index))
             self.stack.insertWidget(index, page)
+            if index == 1:
+                self._apply_pending_road_classification()
+                self._apply_pending_lane_projection()
+                self._apply_pending_esal_result()
+                self._apply_pending_aadt_pcu_result()
         except Exception:
             pass
 
@@ -207,6 +234,246 @@ class MainWindow(QMainWindow):
     def is_quick_panel_visible(self) -> bool:
         return self.stack.currentIndex() in _PAGES_WITHOUT_PREVIEW and self._quick_panel_visible
 
+    @property
+    def traffic_input_page(self):
+        self._ensure_page(0)
+        return self._page_widgets[0]
+
+    def refresh_road_classification(self) -> None:
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        aadt_pcu = traffic_state.get("aadt_pcu") or {}
+        design_year = ""
+        input_page = self._page_widgets[0]
+        if input_page is not None and hasattr(input_page, "active_geometry_design_year"):
+            design_year = input_page.active_geometry_design_year()
+        traffic_state["geometry_design_year"] = design_year
+        projected_aadt = aadt_pcu.get("projected_aadt", aadt_pcu.get("total_aadt"))
+        projected_pcu = aadt_pcu.get("projected_pcu", aadt_pcu.get("total_pcu"))
+        self._apply_road_classification(
+            design_year,
+            projected_aadt,
+            projected_pcu,
+        )
+        self.refresh_traffic_quick_results()
+
+    def refresh_traffic_quick_results(self) -> None:
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        input_page = self._page_widgets[0]
+        geometry_design_year = ""
+        pavement_design_year = ""
+        if input_page is not None and hasattr(input_page, "active_geometry_design_year"):
+            geometry_design_year = input_page.active_geometry_design_year()
+        if input_page is not None and hasattr(input_page, "active_pavement_design_year"):
+            pavement_design_year = input_page.active_pavement_design_year()
+
+        results = build_traffic_quick_results(
+            traffic_state,
+            geometry_design_year=geometry_design_year,
+            pavement_design_year=pavement_design_year,
+        )
+        self.quick_panel.set_results(results)
+
+    def _aadt_pcu_inputs(self) -> tuple[float, str, int]:
+        growth_rate = DEFAULT_GROWTH_RATE
+        design_year_label = ""
+        design_years = 0
+        input_page = self._page_widgets[0]
+        if input_page is not None and hasattr(input_page, "active_growth_rate"):
+            growth_rate = input_page.active_growth_rate()
+        if input_page is not None and hasattr(input_page, "active_geometry_design_year"):
+            design_year_label = input_page.active_geometry_design_year()
+            design_years = parse_design_years(design_year_label)
+        return growth_rate, design_year_label, design_years
+
+    def _apply_pending_aadt_pcu_result(self) -> None:
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "set_aadt_pcu_result"):
+            detail_page.set_aadt_pcu_result(self._pending_aadt_pcu_result)
+
+    def refresh_aadt_pcu(self) -> None:
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        daily_totals = traffic_state.get("daily_totals")
+        summary_total_row = traffic_state.get("summary_total_row")
+        growth_rate, design_year_label, design_years = self._aadt_pcu_inputs()
+        input_page = self._page_widgets[0]
+
+        if (
+            input_page is not None
+            and hasattr(input_page, "is_direct_input_mode")
+            and input_page.is_direct_input_mode()
+        ):
+            base_aadt = 0
+            base_pcu = 0.0
+            if hasattr(input_page, "active_direct_aadt"):
+                base_aadt = input_page.active_direct_aadt()
+            if hasattr(input_page, "active_direct_pcu"):
+                base_pcu = input_page.active_direct_pcu()
+            result = compute_aadt_pcu_from_direct_input(
+                base_aadt,
+                base_pcu,
+                design_years=design_years,
+                growth_rate=growth_rate,
+                design_year_label=design_year_label,
+            )
+        elif not daily_totals and not summary_total_row:
+            result = compute_aadt_pcu(
+                design_years=design_years,
+                growth_rate=growth_rate,
+                design_year_label=design_year_label,
+            )
+        else:
+            try:
+                result = compute_aadt_pcu(
+                    daily_totals,
+                    count_hour=traffic_state.get("traffic_count_hour", "12h"),
+                    summary_total_row=summary_total_row,
+                    design_years=design_years,
+                    growth_rate=growth_rate,
+                    design_year_label=design_year_label,
+                )
+            except Exception:
+                result = compute_aadt_pcu(
+                    design_years=design_years,
+                    growth_rate=growth_rate,
+                    design_year_label=design_year_label,
+                )
+
+        traffic_state["aadt_pcu"] = {
+            "base_aadt": result.base_total_aadt,
+            "base_pcu": result.base_total_pcu,
+            "projected_aadt": result.projected_total_aadt,
+            "projected_pcu": result.projected_total_pcu,
+            "total_aadt": result.total_aadt,
+            "total_pcu": result.total_pcu,
+            "design_year_label": result.design_year_label,
+            "design_years": result.design_years,
+            "growth_rate": result.growth_rate,
+            "input_source": result.input_source,
+        }
+        self._apply_aadt_pcu_result(result)
+
+    def _apply_aadt_pcu_result(self, result: AadtPcuResult | None) -> None:
+        self._pending_aadt_pcu_result = result
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "set_aadt_pcu_result"):
+            detail_page.set_aadt_pcu_result(result)
+        self.refresh_road_classification()
+
+    def _apply_road_classification(
+        self,
+        design_year: str | None,
+        total_aadt: int | None,
+        total_pcu: int | None,
+    ) -> None:
+        self._pending_road_classification = (design_year, total_aadt, total_pcu)
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "set_road_classification"):
+            detail_page.set_road_classification(design_year, total_aadt, total_pcu)
+
+    def _apply_pending_road_classification(self) -> None:
+        design_year, total_aadt, total_pcu = self._pending_road_classification
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "set_road_classification"):
+            detail_page.set_road_classification(design_year, total_aadt, total_pcu)
+
+    def _apply_pending_lane_projection(self) -> None:
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "set_lane_projection"):
+            detail_page.set_lane_projection(self._pending_lane_projection)
+
+    def refresh_lane_projection(self) -> None:
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        sheets = traffic_state.get("sheets")
+        if not sheets:
+            traffic_state["lane_projection"] = {
+                "d1_peak_volume": 0,
+                "d2_peak_volume": 0,
+                "projection_rows": [],
+            }
+            self._apply_lane_projection(None)
+            self.refresh_esal()
+            return
+
+        growth_rate = DEFAULT_GROWTH_RATE
+        input_page = self._page_widgets[0]
+        if input_page is not None and hasattr(input_page, "active_growth_rate"):
+            growth_rate = input_page.active_growth_rate()
+
+        try:
+            result = compute_lane_projection_from_workbook_data(
+                traffic_state,
+                growth_rate=growth_rate,
+                save_outputs=False,
+                print_table=False,
+            )
+        except Exception:
+            result = None
+
+        traffic_state["lane_projection"] = {
+            "d1_peak_volume": result.d1_peak_volume if result else 0,
+            "d2_peak_volume": result.d2_peak_volume if result else 0,
+            "projection_rows": list(result.projection_rows) if result else [],
+        }
+        self._apply_lane_projection(result)
+        self.refresh_esal()
+
+    def _apply_pending_esal_result(self) -> None:
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "set_esal_result"):
+            detail_page.set_esal_result(self._pending_esal_result)
+
+    def refresh_esal(self) -> None:
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        daily_totals = traffic_state.get("daily_totals")
+        if not daily_totals:
+            traffic_state["esal"] = None
+            self._apply_esal_result(None)
+            self.refresh_traffic_quick_results()
+            return
+
+        growth_rate = DEFAULT_GROWTH_RATE
+        input_page = self._page_widgets[0]
+        if input_page is not None and hasattr(input_page, "active_growth_rate"):
+            growth_rate = input_page.active_growth_rate()
+
+        try:
+            result = compute_esal_from_workbook_data(
+                traffic_state,
+                growth_rate=growth_rate,
+            )
+        except Exception:
+            result = None
+
+        if result is not None:
+            traffic_state["esal"] = {
+                "axle_numbers": dict(result.axle_numbers),
+                "design_periods": [
+                    {
+                        "years": period.years,
+                        "total_esal": period.total_esal,
+                        "traffic_class": period.traffic_class,
+                    }
+                    for period in result.design_periods
+                ],
+            }
+        else:
+            traffic_state["esal"] = None
+        self._apply_esal_result(result)
+        self.refresh_traffic_quick_results()
+
+    def _apply_esal_result(self, result: EsalResult | None) -> None:
+        self._pending_esal_result = result
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "set_esal_result"):
+            detail_page.set_esal_result(result)
+
+    def _apply_lane_projection(self, result: LaneProjectionResult | None) -> None:
+        self._pending_lane_projection = result
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "set_lane_projection"):
+            detail_page.set_lane_projection(result)
+        self.refresh_traffic_quick_results()
+
     def set_traffic_count_rows(self, rows: list[list]) -> None:
         traffic_state = self.calc_state.setdefault("traffic_analysis", {})
         traffic_state["traffic_count_rows"] = rows
@@ -216,23 +483,11 @@ class MainWindow(QMainWindow):
         """Store temporary traffic investigation data for the current app session."""
         traffic_state = self.calc_state.setdefault("traffic_analysis", {})
         traffic_state.update(data)
-        count_hour = data.get("traffic_count_hour", "12h")
-        daily_totals = data.get("daily_totals")
-        summary_total_row = data.get("summary_total_row")
-        aadt_pcu_result = compute_aadt_pcu(
-            daily_totals,
-            count_hour=count_hour,
-            summary_total_row=summary_total_row,
-        )
-        traffic_state["aadt_pcu"] = {
-            "total_aadt": aadt_pcu_result.total_aadt,
-            "total_pcu": aadt_pcu_result.total_pcu,
-        }
         self._apply_traffic_summary(
             data.get("traffic_count_rows", []),
-            summary_total_row,
-            aadt_pcu_result,
+            data.get("summary_total_row"),
         )
+        self.refresh_lane_projection()
 
     def refresh_traffic_summary(self, count_hour: str) -> None:
         """Recalculate summary table totals when Traffic Count Hour changes."""
@@ -243,31 +498,22 @@ class MainWindow(QMainWindow):
         summary_total_row = build_summary_total_row(daily_totals, count_hour=count_hour)
         traffic_state["summary_total_row"] = summary_total_row
         traffic_state["traffic_count_hour"] = count_hour
-        aadt_pcu_result = compute_aadt_pcu(daily_totals, count_hour=count_hour)
-        traffic_state["aadt_pcu"] = {
-            "total_aadt": aadt_pcu_result.total_aadt,
-            "total_pcu": aadt_pcu_result.total_pcu,
-        }
         self._apply_traffic_summary(
             traffic_state.get("traffic_count_rows", []),
             summary_total_row,
-            aadt_pcu_result,
         )
+        self.refresh_lane_projection()
 
     def _apply_traffic_summary(
         self,
         rows: list[list],
         summary_total_row: list | None,
-        aadt_pcu_result: AadtPcuResult | None = None,
     ) -> None:
         self._ensure_page(1)
         detail_page = self._page_widgets[1]
         if detail_page is not None and hasattr(detail_page, "set_traffic_count_rows"):
             detail_page.set_traffic_count_rows(rows, summary_total_row=summary_total_row)
-        if detail_page is not None and hasattr(detail_page, "set_aadt_pcu_result"):
-            if aadt_pcu_result is None and summary_total_row:
-                aadt_pcu_result = compute_aadt_pcu(summary_total_row=summary_total_row)
-            detail_page.set_aadt_pcu_result(aadt_pcu_result)
+        self.refresh_aadt_pcu()
 
     def _apply_traffic_count_rows(self, rows: list[list]) -> None:
         traffic_state = self.calc_state.setdefault("traffic_analysis", {})
@@ -281,7 +527,11 @@ class MainWindow(QMainWindow):
         self.current_file_path = None
         self.calc_state = {"inputs": {}, "results": {}}
         self.preview_panel.set_results(None)
-        self._apply_traffic_summary([], None, AadtPcuResult((), 0, 0))
+        self._ensure_page(0)
+        self._apply_traffic_summary([], None)
+        self._apply_lane_projection(None)
+        self._apply_esal_result(None)
+        self.refresh_traffic_quick_results()
         cp = self.calculator_page
         if cp is not None and hasattr(cp, "set_inputs"):
             cp.set_inputs({

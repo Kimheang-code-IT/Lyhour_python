@@ -34,12 +34,15 @@ class TrafficAnalysisDetailResultPage(QWidget):
 
         self.summary_page = SummaryTrafficCountPage()
         self.aadt_pcu_page = AadtPcuPage()
+        self.road_classification_page = RoadClassificationPage()
+        self.number_of_lane_page = NumberOfLanePage()
+        self.esal_page = EsalPage()
         tabs = [
             ("summary", "Summary Traffic count data", self.summary_page),
             ("aadt_pcu", "AADT&PCU", self.aadt_pcu_page),
-            ("road_classification", "Road Classification", RoadClassificationPage()),
-            ("number_of_lane", "Number of Lane", NumberOfLanePage()),
-            ("esal", "ESAL", EsalPage()),
+            ("road_classification", "Road Classification", self.road_classification_page),
+            ("number_of_lane", "Number of Lane", self.number_of_lane_page),
+            ("esal", "ESAL", self.esal_page),
         ]
 
         for index, (route_key, text, page) in enumerate(tabs):
@@ -68,3 +71,21 @@ class TrafficAnalysisDetailResultPage(QWidget):
 
     def set_aadt_pcu_result(self, result) -> None:
         self.aadt_pcu_page.set_aadt_pcu_result(result)
+
+    def set_road_classification(
+        self,
+        design_year: str | None,
+        total_aadt: int | None,
+        total_pcu: int | None,
+    ) -> None:
+        self.road_classification_page.set_road_classification(
+            design_year,
+            total_aadt,
+            total_pcu,
+        )
+
+    def set_lane_projection(self, result) -> None:
+        self.number_of_lane_page.set_lane_projection(result)
+
+    def set_esal_result(self, result) -> None:
+        self.esal_page.set_esal_result(result)

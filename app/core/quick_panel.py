@@ -1,9 +1,18 @@
-"""Quick panel: compact results/actions. Currently served by Quick Results card in preview_panel."""
+"""Quick panel: compact traffic analysis results for Input and Detail Result pages."""
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel
 
 
 class QuickPanel(QFrame):
-    """Optional separate quick panel. Main window may use preview_panel's Quick Results card instead."""
+    """Right-side quick results panel shown on Traffic Analysis pages."""
+
+    _TRAFFIC_FIELDS: tuple[tuple[str, str], ...] = (
+        ("AADT", "AADT ="),
+        ("PCU", "PCU ="),
+        ("Road classification", "Road classification ="),
+        ("Number of lane", "Number of lane ="),
+        ("Capacity ratio", "Capacity ratio ="),
+        ("ESAL", "ESAL ="),
+    )
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -45,16 +54,22 @@ class QuickPanel(QFrame):
         title.setObjectName("quickPanelTitle")
         layout.addWidget(title)
 
-        for text in (
-            "AADT =",
-            "PCU =",
-            "Road classification =",
-            "Number of lane =",
-            "Capacity ratio =",
-            "ESAL =",
-        ):
-            row = QLabel(text)
+        self._result_labels: dict[str, QLabel] = {}
+        self._result_names: dict[str, str] = {}
+        for key, label_text in self._TRAFFIC_FIELDS:
+            row = QLabel(f"{label_text} —")
             row.setObjectName("quickPanelRow")
+            self._result_labels[key] = row
+            self._result_names[key] = label_text
             layout.addWidget(row)
 
         layout.addStretch()
+
+    def set_results(self, results: dict | None) -> None:
+        for key, label in self._result_labels.items():
+            prefix = self._result_names[key]
+            value = (results or {}).get(key)
+            if value is not None and str(value).strip():
+                label.setText(f"{prefix} {value}")
+            else:
+                label.setText(f"{prefix} —")

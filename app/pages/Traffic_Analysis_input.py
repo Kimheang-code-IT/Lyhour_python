@@ -127,6 +127,7 @@ class TrafficAnalysisInputPage(QWidget):
         self.read_r.setSuffix(" %")
         self.read_r.setValue(3.0)
         add_labeled_row(read_grid, 0, "Traffic Growth Rate R =", self.read_r, ROW_HEIGHT)
+        self.read_r.valueChanged.connect(self._on_growth_rate_changed)
 
         self.read_count_hour = make_combo(READ_TRAFFIC_COUNT_HOURS)
         add_labeled_row(read_grid, 1, "Traffic Count Hour =", self.read_count_hour, ROW_HEIGHT)
@@ -138,9 +139,11 @@ class TrafficAnalysisInputPage(QWidget):
 
         self.read_geometry_design_year = make_combo(DESIGN_YEAR_OPTIONS)
         add_labeled_row(read_grid, 3, "Design year for Geometry =", self.read_geometry_design_year, ROW_HEIGHT)
+        self.read_geometry_design_year.currentTextChanged.connect(self._on_geometry_design_year_changed)
 
         self.read_pavement_design_year = make_combo(DESIGN_YEAR_OPTIONS)
         add_labeled_row(read_grid, 4, "Design year for Pavement =", self.read_pavement_design_year, ROW_HEIGHT)
+        self.read_pavement_design_year.currentTextChanged.connect(self._on_pavement_design_year_changed)
 
         self.read_los = make_combo(LOS_OPTIONS)
         add_labeled_row(read_grid, 5, "Level of Service LOS =", self.read_los, ROW_HEIGHT)
@@ -163,8 +166,16 @@ class TrafficAnalysisInputPage(QWidget):
 
         read_radio.toggled.connect(lambda _checked: update_visible_section())
         direct_radio.toggled.connect(lambda _checked: update_visible_section())
+        read_radio.toggled.connect(lambda _checked: self._on_input_mode_changed())
+        direct_radio.toggled.connect(lambda _checked: self._on_input_mode_changed())
+        read_radio.toggled.connect(lambda _checked: self._on_geometry_design_year_changed())
+        direct_radio.toggled.connect(lambda _checked: self._on_geometry_design_year_changed())
+        read_radio.blockSignals(True)
+        direct_radio.blockSignals(True)
         direct_radio.setChecked(False)
         read_radio.setChecked(True)
+        read_radio.blockSignals(False)
+        direct_radio.blockSignals(False)
         update_visible_section()
 
         self.direct_r = make_double_spin()
@@ -173,6 +184,7 @@ class TrafficAnalysisInputPage(QWidget):
         self.direct_r.setSuffix(" %")
         self.direct_r.setValue(3.0)
         add_labeled_row(direct_grid, 0, "Traffic Growth Rate R =", self.direct_r, ROW_HEIGHT)
+        self.direct_r.valueChanged.connect(self._on_growth_rate_changed)
 
         self.direct_count_hour = make_combo(TRAFFIC_COUNT_HOURS)
         add_labeled_row(direct_grid, 1, "Traffic Count Hour =", self.direct_count_hour, ROW_HEIGHT)
@@ -183,18 +195,22 @@ class TrafficAnalysisInputPage(QWidget):
 
         self.direct_geometry_design_year = make_combo(DESIGN_YEAR_OPTIONS)
         add_labeled_row(direct_grid, 3, "Design year for Geometry =", self.direct_geometry_design_year, ROW_HEIGHT)
+        self.direct_geometry_design_year.currentTextChanged.connect(self._on_geometry_design_year_changed)
 
         self.direct_pavement_design_year = make_combo(DESIGN_YEAR_OPTIONS)
         add_labeled_row(direct_grid, 4, "Design year for Pavement =", self.direct_pavement_design_year, ROW_HEIGHT)
+        self.direct_pavement_design_year.currentTextChanged.connect(self._on_pavement_design_year_changed)
 
         self.direct_los = make_combo(LOS_OPTIONS)
         add_labeled_row(direct_grid, 5, "Level of Service LOS =", self.direct_los, ROW_HEIGHT)
 
         self.direct_aadt = make_integer_line_edit(maximum=9_999_999)
         add_labeled_row(direct_grid, 6, "Average Annual Daily Traffic AADT =", self.direct_aadt, ROW_HEIGHT)
+        self.direct_aadt.textChanged.connect(self._on_direct_aadt_pcu_changed)
 
         self.direct_pcu = make_decimal_line_edit(maximum=9_999_999.99, decimals=2)
         add_labeled_row(direct_grid, 7, "Passenger Car Unit PCU =", self.direct_pcu, ROW_HEIGHT)
+        self.direct_pcu.textChanged.connect(self._on_direct_aadt_pcu_changed)
 
         scroll_layout.addWidget(direct_section)
 
@@ -209,6 +225,84 @@ class TrafficAnalysisInputPage(QWidget):
 
     def sync_quick_panel_button(self, visible: bool) -> None:
         self.quick_panel_btn.setText("Hide Quick Result" if visible else "Show Quick Result")
+
+    def is_read_data_mode(self) -> bool:
+        return self.input_mode_group.checkedId() == 0
+
+    def is_direct_input_mode(self) -> bool:
+        return self.input_mode_group.checkedId() == 1
+
+    def active_geometry_design_year(self) -> str:
+        if self.input_mode_group.checkedId() == 0:
+            return self.read_geometry_design_year.currentText()
+        return self.direct_geometry_design_year.currentText()
+
+    def active_pavement_design_year(self) -> str:
+        if self.input_mode_group.checkedId() == 0:
+            return self.read_pavement_design_year.currentText()
+        return self.direct_pavement_design_year.currentText()
+
+    def active_growth_rate(self) -> float:
+        if self.input_mode_group.checkedId() == 0:
+            return self.read_r.value() / 100.0
+        return self.direct_r.value() / 100.0
+
+    @staticmethod
+    def _parse_int_text(text: str) -> int:
+        value = (text or "").strip().replace(",", "")
+        if not value:
+            return 0
+        try:
+            return max(0, int(value))
+        except ValueError:
+            return 0
+
+    @staticmethod
+    def _parse_float_text(text: str) -> float:
+        value = (text or "").strip().replace(",", "")
+        if not value:
+            return 0.0
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            return 0.0
+
+    def active_direct_aadt(self) -> int:
+        return self._parse_int_text(self.direct_aadt.text())
+
+    def active_direct_pcu(self) -> float:
+        return self._parse_float_text(self.direct_pcu.text())
+
+    def _on_input_mode_changed(self) -> None:
+        mw = self.window()
+        if hasattr(mw, "refresh_aadt_pcu"):
+            mw.refresh_aadt_pcu()
+
+    def _on_direct_aadt_pcu_changed(self, _text: str = "") -> None:
+        if not self.is_direct_input_mode():
+            return
+        mw = self.window()
+        if hasattr(mw, "refresh_aadt_pcu"):
+            mw.refresh_aadt_pcu()
+
+    def _on_growth_rate_changed(self, _value: float = 0.0) -> None:
+        mw = self.window()
+        if hasattr(mw, "refresh_lane_projection"):
+            mw.refresh_lane_projection()
+        if hasattr(mw, "refresh_aadt_pcu"):
+            mw.refresh_aadt_pcu()
+
+    def _on_geometry_design_year_changed(self, _text: str = "") -> None:
+        mw = self.window()
+        if hasattr(mw, "refresh_aadt_pcu"):
+            mw.refresh_aadt_pcu()
+        elif hasattr(mw, "refresh_road_classification"):
+            mw.refresh_road_classification()
+
+    def _on_pavement_design_year_changed(self, _text: str = "") -> None:
+        mw = self.window()
+        if hasattr(mw, "refresh_traffic_quick_results"):
+            mw.refresh_traffic_quick_results()
 
     def _on_read_count_hour_changed(self, _text: str) -> None:
         mw = self.window()
@@ -277,6 +371,6 @@ class TrafficAnalysisInputPage(QWidget):
                 f"Daily total row (C69) D1 + D2 with {count_hour} power x{power} applied."
                 f"{missing_text}\n\n"
                 "Summary Traffic count data table and chart are updated.\n"
-                "AADT & PCU tab is updated."
+                "AADT & PCU and Number of Lane tabs are updated."
             ),
         )

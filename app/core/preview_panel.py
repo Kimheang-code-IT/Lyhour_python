@@ -160,6 +160,8 @@ class PreviewPanel(QFrame):
             ("PCU", "PCU ="),
             ("Road classification", "Road classification ="),
             ("Number of lane", "Number of lane ="),
+            ("Capacity ratio", "Capacity ratio ="),
+            ("ESAL", "ESAL ="),
         ]
         self._set_schema(fields, suffix_m_keys=set())
 
