@@ -18,7 +18,10 @@ from app.core.components.form_controls import (
     make_double_spin,
     make_integer_line_edit,
 )
-from app.services.traffic_excel import read_traffic_investigation_workbook
+from app.core.ui_scale import UiScale
+from app.core.ui_style import section_title_style, title_style
+from app.services.traffic_excel import count_hour_power_description, read_traffic_investigation_workbook
+from app.data.area_type import AREA_TYPE_OPTIONS, DEFAULT_AREA_TYPE
 from app.widgets.labeled_input import add_labeled_row
 from app.widgets.button import secondary_button
 
@@ -30,9 +33,8 @@ except Exception:
     _HAS_FLUENT = False
 
 # Options for dropdowns
-READ_TRAFFIC_COUNT_HOURS = ["12h", "24h"]
-TRAFFIC_COUNT_HOURS = ["6h", "8h", "12h", "24h"]
-DESIGN_SPEED_OPTIONS = [f"{v} km/h" for v in (30, 40, 50, 60, 70, 80, 90, 100, 110, 120)]
+TRAFFIC_COUNT_HOURS = ["12h", "24h"]
+AREA_TYPE_COMBO_OPTIONS = list(AREA_TYPE_OPTIONS)
 DESIGN_YEAR_OPTIONS = [f"{v} year" for v in (5, 10, 15, 20, 25, 30, 35, 40)]
 LOS_OPTIONS = ["A", "B", "C", "D", "E", "F"]
 
@@ -41,7 +43,7 @@ ROW_HEIGHT = 36
 
 def section_with_radio(
     title: str, parent: QWidget, header_widget: QWidget | None = None
-) -> tuple[QWidget, QRadioButton, QFrame, QGridLayout]:
+) -> tuple[QWidget, QRadioButton, QFrame, QGridLayout, QWidget]:
     """Return (section_widget, radio, frame, grid). Radio is outside frame for show/hide logic."""
     section_widget = QWidget(parent)
     section_layout = QVBoxLayout(section_widget)
@@ -57,7 +59,7 @@ def section_with_radio(
         title_lbl = SubtitleLabel(title)
     else:
         title_lbl = QLabel(title)
-        title_lbl.setStyleSheet("font-size: 16px; font-weight: bold;")
+        title_lbl.setStyleSheet(section_title_style(16))
     title_row.addWidget(radio)
     title_row.addWidget(title_lbl)
     title_row.addStretch()
@@ -81,7 +83,7 @@ def section_with_radio(
     grid.setContentsMargins(0, 0, 0, 0)
     outer.addLayout(grid)
     section_layout.addWidget(frame)
-    return section_widget, radio, frame, grid
+    return section_widget, radio, frame, grid, title_lbl
 
 
 class TrafficAnalysisInputPage(QWidget):
@@ -94,7 +96,8 @@ class TrafficAnalysisInputPage(QWidget):
             page_title = SubtitleLabel("Traffic Analysis Input")
         else:
             page_title = QLabel("Traffic Analysis Input")
-            page_title.setStyleSheet("font-size: 22px; font-weight: bold;")
+            page_title.setStyleSheet(title_style(22))
+        self._page_title = page_title
         title_row = QHBoxLayout()
         title_row.addWidget(page_title)
         title_row.addStretch()
@@ -119,7 +122,9 @@ class TrafficAnalysisInputPage(QWidget):
         scroll_layout.setSpacing(20)
 
         # Section with radio logic for Read Data
-        read_section, read_radio, read_frame, read_grid = section_with_radio("Read Data", scroll_content)
+        read_section, read_radio, read_frame, read_grid, read_title = section_with_radio(
+            "Read Data", scroll_content
+        )
 
         self.read_r = make_double_spin()
         self.read_r.setRange(0, 100)
@@ -129,13 +134,14 @@ class TrafficAnalysisInputPage(QWidget):
         add_labeled_row(read_grid, 0, "Traffic Growth Rate R =", self.read_r, ROW_HEIGHT)
         self.read_r.valueChanged.connect(self._on_growth_rate_changed)
 
-        self.read_count_hour = make_combo(READ_TRAFFIC_COUNT_HOURS)
+        self.read_count_hour = make_combo(TRAFFIC_COUNT_HOURS)
         add_labeled_row(read_grid, 1, "Traffic Count Hour =", self.read_count_hour, ROW_HEIGHT)
-        self.read_count_hour.currentTextChanged.connect(self._on_read_count_hour_changed)
+        self.read_count_hour.currentTextChanged.connect(self._on_count_hour_changed)
 
-        self.read_design_speed = make_combo(DESIGN_SPEED_OPTIONS)
-        self.read_design_speed.setCurrentIndex(DESIGN_SPEED_OPTIONS.index("80 km/h"))
-        add_labeled_row(read_grid, 2, "Design Speed V =", self.read_design_speed, ROW_HEIGHT)
+        self.read_area_type = make_combo(AREA_TYPE_COMBO_OPTIONS)
+        self.read_area_type.setCurrentText(DEFAULT_AREA_TYPE)
+        add_labeled_row(read_grid, 2, "Area Type =", self.read_area_type, ROW_HEIGHT)
+        self.read_area_type.currentTextChanged.connect(self._on_area_type_changed)
 
         self.read_geometry_design_year = make_combo(DESIGN_YEAR_OPTIONS)
         add_labeled_row(read_grid, 3, "Design year for Geometry =", self.read_geometry_design_year, ROW_HEIGHT)
@@ -153,7 +159,9 @@ class TrafficAnalysisInputPage(QWidget):
         # ---------- Direct Input ----------
 
         # Section with radio logic for Direct Input
-        direct_section, direct_radio, direct_frame, direct_grid = section_with_radio("Direct Input", scroll_content)
+        direct_section, direct_radio, direct_frame, direct_grid, direct_title = section_with_radio(
+            "Direct Input", scroll_content
+        )
 
         self.input_mode_group = QButtonGroup(self)
         self.input_mode_group.setExclusive(True)
@@ -188,10 +196,12 @@ class TrafficAnalysisInputPage(QWidget):
 
         self.direct_count_hour = make_combo(TRAFFIC_COUNT_HOURS)
         add_labeled_row(direct_grid, 1, "Traffic Count Hour =", self.direct_count_hour, ROW_HEIGHT)
+        self.direct_count_hour.currentTextChanged.connect(self._on_count_hour_changed)
 
-        self.direct_design_speed = make_combo(DESIGN_SPEED_OPTIONS)
-        self.direct_design_speed.setCurrentIndex(DESIGN_SPEED_OPTIONS.index("80 km/h"))
-        add_labeled_row(direct_grid, 2, "Design Speed V =", self.direct_design_speed, ROW_HEIGHT)
+        self.direct_area_type = make_combo(AREA_TYPE_COMBO_OPTIONS)
+        self.direct_area_type.setCurrentText(DEFAULT_AREA_TYPE)
+        add_labeled_row(direct_grid, 2, "Area Type =", self.direct_area_type, ROW_HEIGHT)
+        self.direct_area_type.currentTextChanged.connect(self._on_area_type_changed)
 
         self.direct_geometry_design_year = make_combo(DESIGN_YEAR_OPTIONS)
         add_labeled_row(direct_grid, 3, "Design year for Geometry =", self.direct_geometry_design_year, ROW_HEIGHT)
@@ -217,6 +227,35 @@ class TrafficAnalysisInputPage(QWidget):
         scroll_layout.addStretch()
         scroll.setWidget(scroll_content)
         layout.addWidget(scroll, 1)
+        self._section_titles = [
+            title for title in (read_title, direct_title) if isinstance(title, QLabel)
+        ]
+        self.refresh_ui_scale()
+
+    def refresh_ui_scale(self) -> None:
+        if isinstance(self._page_title, QLabel):
+            self._page_title.setStyleSheet(title_style(22))
+        for title_label in self._section_titles:
+            title_label.setStyleSheet(section_title_style(16))
+        row_height = UiScale.px(ROW_HEIGHT)
+        for widget in (
+            self.read_r,
+            self.read_count_hour,
+            self.read_area_type,
+            self.read_geometry_design_year,
+            self.read_pavement_design_year,
+            self.read_los,
+            self.direct_r,
+            self.direct_count_hour,
+            self.direct_area_type,
+            self.direct_geometry_design_year,
+            self.direct_pavement_design_year,
+            self.direct_los,
+            self.direct_aadt,
+            self.direct_pcu,
+        ):
+            widget.setMinimumHeight(row_height)
+            widget.setMaximumHeight(row_height)
 
     def _toggle_quick_panel(self):
         mw = self.window()
@@ -241,6 +280,11 @@ class TrafficAnalysisInputPage(QWidget):
         if self.input_mode_group.checkedId() == 0:
             return self.read_pavement_design_year.currentText()
         return self.direct_pavement_design_year.currentText()
+
+    def active_area_type(self) -> str:
+        if self.input_mode_group.checkedId() == 0:
+            return self.read_area_type.currentText()
+        return self.direct_area_type.currentText()
 
     def active_growth_rate(self) -> float:
         if self.input_mode_group.checkedId() == 0:
@@ -273,10 +317,17 @@ class TrafficAnalysisInputPage(QWidget):
     def active_direct_pcu(self) -> float:
         return self._parse_float_text(self.direct_pcu.text())
 
+    def active_traffic_count_hour(self) -> str:
+        if self.is_read_data_mode():
+            return self.read_count_hour.currentText()
+        return self.direct_count_hour.currentText()
+
     def _on_input_mode_changed(self) -> None:
         mw = self.window()
         if hasattr(mw, "refresh_aadt_pcu"):
             mw.refresh_aadt_pcu()
+        if hasattr(mw, "refresh_traffic_summary"):
+            mw.refresh_traffic_summary(self.active_traffic_count_hour())
 
     def _on_direct_aadt_pcu_changed(self, _text: str = "") -> None:
         if not self.is_direct_input_mode():
@@ -304,10 +355,15 @@ class TrafficAnalysisInputPage(QWidget):
         if hasattr(mw, "refresh_traffic_quick_results"):
             mw.refresh_traffic_quick_results()
 
-    def _on_read_count_hour_changed(self, _text: str) -> None:
+    def _on_area_type_changed(self, _text: str = "") -> None:
+        mw = self.window()
+        if hasattr(mw, "refresh_aadt_pcu"):
+            mw.refresh_aadt_pcu()
+
+    def _on_count_hour_changed(self, _text: str) -> None:
         mw = self.window()
         if hasattr(mw, "refresh_traffic_summary"):
-            mw.refresh_traffic_summary(self.read_count_hour.currentText())
+            mw.refresh_traffic_summary(self.active_traffic_count_hour())
 
     def _on_read_excel(self):
         """Read sheets D1/D2 and store temporary traffic data for this session."""
@@ -358,7 +414,8 @@ class TrafficAnalysisInputPage(QWidget):
         if missing:
             missing_text = f"\n\nMissing sheet(s): {', '.join(missing)}"
 
-        power = "1.2" if count_hour == "24h" else "1.0"
+        survey_hours = int(traffic_data.get("survey_hours") or 12)
+        power_text = count_hour_power_description(count_hour, survey_hours=survey_hours)
 
         QMessageBox.information(
             self,
@@ -366,9 +423,11 @@ class TrafficAnalysisInputPage(QWidget):
             (
                 f"Selected Excel file:\n{path}\n\n"
                 f"Temporary data loaded from sheets D1 and D2.\n"
+                f"Excel survey period detected: {survey_hours}h.\n"
                 f"{chr(10).join(sheet_lines)}\n"
-                f"Combined hourly rows: {len(traffic_rows)}\n"
-                f"Daily total row (C69) D1 + D2 with {count_hour} power x{power} applied."
+                f"Combined hourly rows shown: {len(traffic_rows)}\n"
+                f"Vehicle totals averaged from D1 and D2 (C8:T127 per sheet).\n"
+                f"{power_text}."
                 f"{missing_text}\n\n"
                 "Summary Traffic count data table and chart are updated.\n"
                 "AADT & PCU and Number of Lane tabs are updated."

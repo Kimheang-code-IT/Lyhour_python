@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout, QW
 
 from qfluentwidgets import SegmentedWidget
 
+from app.core.ui_style import title_style
 from app.pages.subpages.aadt_pcu import AadtPcuPage
 from app.pages.subpages.esal import EsalPage
 from app.pages.subpages.number_of_lane import NumberOfLanePage
@@ -19,9 +20,8 @@ class TrafficAnalysisDetailResultPage(QWidget):
         layout.setSpacing(16)
 
         title_row = QHBoxLayout()
-        lbl = QLabel("Detail Result")
-        lbl.setStyleSheet("font-size: 22px; font-weight: bold;")
-        title_row.addWidget(lbl)
+        self._page_title = QLabel("Detail Result")
+        title_row.addWidget(self._page_title)
         title_row.addStretch()
         self.quick_panel_btn = secondary_button("Show Quick Result", min_height=36)
         self.quick_panel_btn.clicked.connect(self._toggle_quick_panel)
@@ -39,7 +39,7 @@ class TrafficAnalysisDetailResultPage(QWidget):
         self.esal_page = EsalPage()
         tabs = [
             ("summary", "Summary Traffic count data", self.summary_page),
-            ("aadt_pcu", "AADT&PCU", self.aadt_pcu_page),
+            ("aadt_pcu", "AADT && PCU", self.aadt_pcu_page),
             ("road_classification", "Road Classification", self.road_classification_page),
             ("number_of_lane", "Number of Lane", self.number_of_lane_page),
             ("esal", "ESAL", self.esal_page),
@@ -47,12 +47,29 @@ class TrafficAnalysisDetailResultPage(QWidget):
 
         for index, (route_key, text, page) in enumerate(tabs):
             self.segmented.addItem(route_key, text, onClick=lambda _=None, i=index: self.stack.setCurrentIndex(i))
+            item = self.segmented.widget(route_key)
+            if item is not None:
+                # Qt treats "&" as mnemonic markup in button text; "&&" displays as "&".
+                item.setText(text)
             self.stack.addWidget(page)
 
         self.segmented.setCurrentItem("summary")
         self.stack.setCurrentIndex(0)
         layout.addWidget(self.segmented)
         layout.addWidget(self.stack, 1)
+        self.refresh_ui_scale()
+
+    def refresh_ui_scale(self) -> None:
+        self._page_title.setStyleSheet(title_style(22))
+        for page in (
+            self.summary_page,
+            self.aadt_pcu_page,
+            self.road_classification_page,
+            self.number_of_lane_page,
+            self.esal_page,
+        ):
+            if hasattr(page, "refresh_ui_scale"):
+                page.refresh_ui_scale()
 
     def _toggle_quick_panel(self):
         mw = self.window()
@@ -66,8 +83,14 @@ class TrafficAnalysisDetailResultPage(QWidget):
         self,
         rows: list[list],
         summary_total_row: list | None = None,
+        *,
+        pie_daily_totals: dict[str, list[int]] | None = None,
     ) -> None:
-        self.summary_page.set_traffic_count_rows(rows, summary_total_row=summary_total_row)
+        self.summary_page.set_traffic_count_rows(
+            rows,
+            summary_total_row=summary_total_row,
+            pie_daily_totals=pie_daily_totals,
+        )
 
     def set_aadt_pcu_result(self, result) -> None:
         self.aadt_pcu_page.set_aadt_pcu_result(result)

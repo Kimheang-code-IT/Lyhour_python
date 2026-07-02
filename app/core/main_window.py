@@ -22,9 +22,15 @@ from app.core.Sidebar_left import SidebarLeft
 from app.core.Topbar_nav import TopbarNav
 from app.core.preview_panel import PreviewPanel
 from app.core.quick_panel import QuickPanel
+from app.core.ui_scale import UiScale
 from app.core.theme import apply_drop_shadow
 from app.services.pdf_export import export_pdf
-from app.services.traffic_excel import build_summary_total_row
+from app.services.traffic_excel import (
+    build_summary_total_row,
+    filter_traffic_count_rows,
+    select_daily_totals,
+)
+from app.data.road_classification import road_classification_code
 from app.services.traffic_aadt_pcu import (
     AadtPcuResult,
     compute_aadt_pcu,
@@ -169,6 +175,22 @@ class MainWindow(QMainWindow):
         self._apply_preview_visibility(0)
         QTimer.singleShot(0, self.refresh_road_classification)
         QTimer.singleShot(0, self.refresh_traffic_quick_results)
+        self.splitter.splitterMoved.connect(lambda *_args: self._maybe_refresh_ui_scale())
+        QTimer.singleShot(0, self._maybe_refresh_ui_scale)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._maybe_refresh_ui_scale()
+
+    def _maybe_refresh_ui_scale(self) -> None:
+        width = self.stack.width() or self.width()
+        if UiScale.update(width):
+            self._refresh_ui_scale_all_pages()
+
+    def _refresh_ui_scale_all_pages(self) -> None:
+        for page in self._page_widgets:
+            if page is not None and hasattr(page, "refresh_ui_scale"):
+                page.refresh_ui_scale()
 
     def _on_page_changed(self, index: int):
         self._ensure_page(index)
@@ -204,6 +226,8 @@ class MainWindow(QMainWindow):
             self._page_widgets[index] = page
             self.stack.removeWidget(self.stack.widget(index))
             self.stack.insertWidget(index, page)
+            if hasattr(page, "refresh_ui_scale"):
+                page.refresh_ui_scale()
             if index == 1:
                 self._apply_pending_road_classification()
                 self._apply_pending_lane_projection()
@@ -249,6 +273,11 @@ class MainWindow(QMainWindow):
         traffic_state["geometry_design_year"] = design_year
         projected_aadt = aadt_pcu.get("projected_aadt", aadt_pcu.get("total_aadt"))
         projected_pcu = aadt_pcu.get("projected_pcu", aadt_pcu.get("total_pcu"))
+        if projected_aadt:
+            traffic_state["road_classification"] = road_classification_code(
+                int(projected_aadt),
+                int(projected_pcu) if projected_pcu else None,
+            )
         self._apply_road_classification(
             design_year,
             projected_aadt,
@@ -296,6 +325,10 @@ class MainWindow(QMainWindow):
         summary_total_row = traffic_state.get("summary_total_row")
         growth_rate, design_year_label, design_years = self._aadt_pcu_inputs()
         input_page = self._page_widgets[0]
+        area_type = ""
+        if input_page is not None and hasattr(input_page, "active_area_type"):
+            area_type = input_page.active_area_type()
+        traffic_state["area_type"] = area_type
 
         if (
             input_page is not None
@@ -314,28 +347,35 @@ class MainWindow(QMainWindow):
                 design_years=design_years,
                 growth_rate=growth_rate,
                 design_year_label=design_year_label,
+                area_type=area_type,
             )
         elif not daily_totals and not summary_total_row:
             result = compute_aadt_pcu(
                 design_years=design_years,
                 growth_rate=growth_rate,
                 design_year_label=design_year_label,
+                area_type=area_type,
             )
         else:
             try:
                 result = compute_aadt_pcu(
                     daily_totals,
+                    daily_totals_12h=traffic_state.get("daily_totals_12h"),
+                    daily_totals_24h=traffic_state.get("daily_totals_24h"),
+                    survey_hours=int(traffic_state.get("survey_hours") or 12),
                     count_hour=traffic_state.get("traffic_count_hour", "12h"),
                     summary_total_row=summary_total_row,
                     design_years=design_years,
                     growth_rate=growth_rate,
                     design_year_label=design_year_label,
+                    area_type=area_type,
                 )
             except Exception:
                 result = compute_aadt_pcu(
                     design_years=design_years,
                     growth_rate=growth_rate,
                     design_year_label=design_year_label,
+                    area_type=area_type,
                 )
 
         traffic_state["aadt_pcu"] = {
@@ -349,6 +389,7 @@ class MainWindow(QMainWindow):
             "design_years": result.design_years,
             "growth_rate": result.growth_rate,
             "input_source": result.input_source,
+            "area_type": area_type,
         }
         self._apply_aadt_pcu_result(result)
 
@@ -425,7 +466,9 @@ class MainWindow(QMainWindow):
     def refresh_esal(self) -> None:
         traffic_state = self.calc_state.setdefault("traffic_analysis", {})
         daily_totals = traffic_state.get("daily_totals")
-        if not daily_totals:
+        daily_totals_12h = traffic_state.get("daily_totals_12h")
+        daily_totals_24h = traffic_state.get("daily_totals_24h")
+        if not daily_totals and not daily_totals_12h and not daily_totals_24h:
             traffic_state["esal"] = None
             self._apply_esal_result(None)
             self.refresh_traffic_quick_results()
@@ -488,21 +531,58 @@ class MainWindow(QMainWindow):
             data.get("summary_total_row"),
         )
         self.refresh_lane_projection()
+        self.refresh_esal()
 
     def refresh_traffic_summary(self, count_hour: str) -> None:
         """Recalculate summary table totals when Traffic Count Hour changes."""
         traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        daily_totals_12h = traffic_state.get("daily_totals_12h")
+        daily_totals_24h = traffic_state.get("daily_totals_24h")
         daily_totals = traffic_state.get("daily_totals")
-        if not daily_totals:
+        if not daily_totals_12h and not daily_totals_24h and not daily_totals:
             return
-        summary_total_row = build_summary_total_row(daily_totals, count_hour=count_hour)
+
+        survey_hours = int(traffic_state.get("survey_hours") or 12)
+        summary_total_row = build_summary_total_row(
+            daily_totals_12h=daily_totals_12h,
+            daily_totals_24h=daily_totals_24h,
+            daily_totals=daily_totals,
+            survey_hours=survey_hours,
+            count_hour=count_hour,
+        )
+        combined_rows = traffic_state.get("traffic_count_rows_all") or traffic_state.get(
+            "traffic_count_rows",
+            [],
+        )
+        traffic_count_rows = filter_traffic_count_rows(
+            combined_rows,
+            survey_hours=survey_hours,
+            count_hour=count_hour,
+        )
+        if daily_totals_12h or daily_totals_24h:
+            daily_totals = select_daily_totals(
+                daily_totals_12h or {},
+                daily_totals_24h or {},
+                survey_hours=survey_hours,
+                count_hour=count_hour,
+            )
+        traffic_state["daily_totals"] = daily_totals
         traffic_state["summary_total_row"] = summary_total_row
         traffic_state["traffic_count_hour"] = count_hour
+        traffic_state["traffic_count_rows"] = traffic_count_rows
         self._apply_traffic_summary(
-            traffic_state.get("traffic_count_rows", []),
+            traffic_count_rows,
             summary_total_row,
         )
         self.refresh_lane_projection()
+
+    def _pie_daily_totals(self, traffic_state: dict) -> dict[str, list[int]] | None:
+        """Raw per-sheet totals (D1 + D2) for the summary pie chart."""
+        return (
+            traffic_state.get("daily_totals_24h")
+            or traffic_state.get("daily_totals_12h")
+            or traffic_state.get("daily_totals")
+        )
 
     def _apply_traffic_summary(
         self,
@@ -511,9 +591,15 @@ class MainWindow(QMainWindow):
     ) -> None:
         self._ensure_page(1)
         detail_page = self._page_widgets[1]
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
         if detail_page is not None and hasattr(detail_page, "set_traffic_count_rows"):
-            detail_page.set_traffic_count_rows(rows, summary_total_row=summary_total_row)
+            detail_page.set_traffic_count_rows(
+                rows,
+                summary_total_row=summary_total_row,
+                pie_daily_totals=self._pie_daily_totals(traffic_state),
+            )
         self.refresh_aadt_pcu()
+        self.refresh_esal()
 
     def _apply_traffic_count_rows(self, rows: list[list]) -> None:
         traffic_state = self.calc_state.setdefault("traffic_analysis", {})

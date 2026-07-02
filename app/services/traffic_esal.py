@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.services.traffic_excel import VEHICLE_TYPE_COUNT, traffic_count_hour_multiplier
+from app.services.traffic_excel import VEHICLE_TYPE_COUNT, average_vehicle_totals
 
 # ESAL factor per vehicle per day (equivalent axle loads), by Excel column C–T.
 COLUMN_ESAL_FACTORS: list[float] = [
@@ -79,19 +79,21 @@ def get_traffic_class(esal_million: float) -> str:
 
 
 def sum_vehicle_totals(
-    daily_totals: dict[str, list[int]],
+    daily_totals: dict[str, list[int]] | None = None,
     *,
+    daily_totals_12h: dict[str, list[int]] | None = None,
+    daily_totals_24h: dict[str, list[int]] | None = None,
+    survey_hours: int = 12,
     count_hour: str = "12h",
 ) -> list[int]:
-    """Sum D1 + D2 daily totals and apply Traffic Count Hour power."""
-    power = traffic_count_hour_multiplier(count_hour)
-    summed = [0] * VEHICLE_TYPE_COUNT
-    for sheet_name in ("D1", "D2"):
-        values = daily_totals.get(sheet_name) or []
-        for index in range(VEHICLE_TYPE_COUNT):
-            if index < len(values):
-                summed[index] += int(values[index])
-    return [int(round(value * power)) for value in summed]
+    """Average D1 and D2 daily totals for the selected count period and apply power."""
+    return average_vehicle_totals(
+        daily_totals_12h=daily_totals_12h,
+        daily_totals_24h=daily_totals_24h,
+        daily_totals=daily_totals,
+        survey_hours=survey_hours,
+        count_hour=count_hour,
+    )
 
 
 def vehicle_totals_from_summary_row(summary_total_row: list) -> list[int]:
@@ -146,6 +148,7 @@ def build_axle_numbers(vehicle_totals: list[int]) -> dict[str, int]:
 
 
 def build_design_period_description(periods: tuple[EsalDesignPeriodResult, ...]) -> str:
+    """Plain-text design period lines (backward compatible)."""
     lines = [
         f"- Design period in {period.years} year is {period.traffic_class}"
         for period in periods
@@ -153,9 +156,28 @@ def build_design_period_description(periods: tuple[EsalDesignPeriodResult, ...])
     return "\n\n".join(lines)
 
 
+def build_design_period_description_html(
+    periods: tuple[EsalDesignPeriodResult, ...],
+    *,
+    panel_width: int | None = None,
+) -> str:
+    """HTML description for the ESAL tab."""
+    from app.core.result_description_html import wrap_result_description_lines
+
+    lines: list[str] = []
+    for period in periods:
+        value = period.traffic_class if period.traffic_class and period.traffic_class != "—" else "____"
+        lines.append(f"- Design period in {period.years} year is {value}")
+
+    return wrap_result_description_lines(lines, panel_width=panel_width)
+
+
 def compute_esal(
     daily_totals: dict[str, list[int]] | None = None,
     *,
+    daily_totals_12h: dict[str, list[int]] | None = None,
+    daily_totals_24h: dict[str, list[int]] | None = None,
+    survey_hours: int = 12,
     count_hour: str = "12h",
     summary_total_row: list | None = None,
     growth_rate: float = 0.05,
@@ -163,8 +185,14 @@ def compute_esal(
 ) -> EsalResult:
     if summary_total_row:
         vehicle_totals = vehicle_totals_from_summary_row(summary_total_row)
-    elif daily_totals:
-        vehicle_totals = sum_vehicle_totals(daily_totals, count_hour=count_hour)
+    elif daily_totals or daily_totals_12h or daily_totals_24h:
+        vehicle_totals = sum_vehicle_totals(
+            daily_totals,
+            daily_totals_12h=daily_totals_12h,
+            daily_totals_24h=daily_totals_24h,
+            survey_hours=survey_hours,
+            count_hour=count_hour,
+        )
     else:
         vehicle_totals = []
 
@@ -208,6 +236,9 @@ def compute_esal_from_workbook_data(
 ) -> EsalResult:
     return compute_esal(
         workbook_data.get("daily_totals"),
+        daily_totals_12h=workbook_data.get("daily_totals_12h"),
+        daily_totals_24h=workbook_data.get("daily_totals_24h"),
+        survey_hours=int(workbook_data.get("survey_hours") or 12),
         count_hour=workbook_data.get("traffic_count_hour", "12h"),
         summary_total_row=workbook_data.get("summary_total_row"),
         growth_rate=growth_rate,

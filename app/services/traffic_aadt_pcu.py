@@ -4,34 +4,19 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from app.services.traffic_excel import VEHICLE_TYPE_COUNT, traffic_count_hour_multiplier
+from app.services.traffic_excel import VEHICLE_TYPE_COUNT, average_vehicle_totals
+from app.data.area_type import (
+    DEFAULT_AREA_TYPE,
+    normalize_area_type,
+    pcu_factors_for_area_type,
+)
 
-# PCU factors per Excel vehicle column (C … T), matching Traffic Demand Forecast (PCU).
-COLUMN_PCU_FACTORS: list[float] = [
-    0.4,  # Motor
-    1.2,  # Tricycles
-    1.2,  # Koyon
-    1.0,  # Passenger Car
-    1.0,  # Pick-up
-    2.0,  # Max 15 Sets
-    2.0,  # More than 15 Sets
-    4.0,  # More than 24 Seats (buses)
-    2.5,  # 2 axles 4 tires
-    2.5,  # 2 axles 6 tires
-    4.5,  # 3 axles
-    4.5,  # 4 axles No-trailer
-    4.5,  # 4 axles Full-trailer
-    4.5,  # 4 axles Semi-trailer
-    4.5,  # 5 axles No-trailer
-    4.5,  # 5 axles Full-trailer
-    4.5,  # 5 axles Semi-trailer
-    4.5,  # 6 axles Semi-trailer
-]
+# Default PCU factors (Rural Standard) — kept for backward compatibility.
+COLUMN_PCU_FACTORS: list[float] = pcu_factors_for_area_type(DEFAULT_AREA_TYPE)
 
 _HEAVY_COLUMN_START = 10
-_HEAVY_PCU_FACTOR = 4.5
 
-# AADT display groups (PCU is summed per underlying column, not one factor per group).
+# AADT display groups; PCU sums per-column values inside each group.
 VEHICLE_CATEGORIES: list[tuple[str, list[int]]] = [
     ("Passenger cars", [3, 4]),
     ("Motorcycles", [0]),
@@ -65,6 +50,7 @@ class AadtPcuResult:
     design_year_label: str = ""
     design_years: int = 0
     growth_rate: float = 0.0
+    area_type: str = DEFAULT_AREA_TYPE
     input_source: str = "read_data"
 
     @property
@@ -128,6 +114,27 @@ def column_pcu(count: int, factor: float) -> int:
     return int(round(count * factor))
 
 
+def column_pcus_for_totals(
+    vehicle_totals: list[int],
+    pcu_factors: list[float],
+) -> list[int]:
+    """PCU for each vehicle column: round(count × factor) one type at a time."""
+    column_pcus: list[int] = []
+    for index in range(VEHICLE_TYPE_COUNT):
+        count = vehicle_totals[index] if index < len(vehicle_totals) else 0
+        factor = pcu_factors[index] if index < len(pcu_factors) else pcu_factors[-1]
+        column_pcus.append(column_pcu(count, factor))
+    return column_pcus
+
+
+def total_pcu_from_vehicle_totals(
+    vehicle_totals: list[int],
+    pcu_factors: list[float],
+) -> int:
+    """Sum PCU from each vehicle type using the selected area-type factors."""
+    return sum(column_pcus_for_totals(vehicle_totals, pcu_factors))
+
+
 def project_traffic_value(base_value: float, design_years: int, growth_rate: float) -> int:
     """Project AADT or PCU to the selected geometry design year."""
     if base_value <= 0:
@@ -154,19 +161,21 @@ def project_vehicle_totals(
 
 
 def sum_vehicle_totals(
-    daily_totals: dict[str, list[int]],
+    daily_totals: dict[str, list[int]] | None = None,
     *,
+    daily_totals_12h: dict[str, list[int]] | None = None,
+    daily_totals_24h: dict[str, list[int]] | None = None,
+    survey_hours: int = 12,
     count_hour: str = "12h",
 ) -> list[int]:
-    """Sum D1 + D2 daily totals and apply Traffic Count Hour power."""
-    power = traffic_count_hour_multiplier(count_hour)
-    summed = [0] * VEHICLE_TYPE_COUNT
-    for sheet_name in ("D1", "D2"):
-        values = daily_totals.get(sheet_name) or []
-        for index in range(VEHICLE_TYPE_COUNT):
-            if index < len(values):
-                summed[index] += int(values[index])
-    return [int(round(value * power)) for value in summed]
+    """Average D1 and D2 daily totals for the selected count period and apply power."""
+    return average_vehicle_totals(
+        daily_totals_12h=daily_totals_12h,
+        daily_totals_24h=daily_totals_24h,
+        daily_totals=daily_totals,
+        survey_hours=survey_hours,
+        count_hour=count_hour,
+    )
 
 
 def vehicle_totals_from_summary_row(summary_total_row: list) -> list[int]:
@@ -178,30 +187,18 @@ def vehicle_totals_from_summary_row(summary_total_row: list) -> list[int]:
 
 def _result_from_vehicle_totals(
     vehicle_totals: list[int],
+    *,
+    pcu_factors: list[float] | None = None,
 ) -> tuple[tuple[VehicleCategoryResult, ...], int, int]:
-    light_pcus = [
-        column_pcu(count, factor)
-        for count, factor in zip(
-            vehicle_totals[:_HEAVY_COLUMN_START],
-            COLUMN_PCU_FACTORS[:_HEAVY_COLUMN_START],
-        )
-    ]
-    heavy_aadt = sum(vehicle_totals[_HEAVY_COLUMN_START:])
-    heavy_pcu = column_pcu(heavy_aadt, _HEAVY_PCU_FACTOR)
-    total_pcu = sum(light_pcus) + heavy_pcu
-    total_aadt = sum(vehicle_totals)
+    factors = pcu_factors or COLUMN_PCU_FACTORS
+    column_pcus = column_pcus_for_totals(vehicle_totals, factors)
+    total_pcu = sum(column_pcus)
+    total_aadt = sum(vehicle_totals[:VEHICLE_TYPE_COUNT])
 
     categories: list[VehicleCategoryResult] = []
     for name, column_indices in VEHICLE_CATEGORIES:
         aadt = sum(vehicle_totals[index] for index in column_indices if index < len(vehicle_totals))
-        if name == "Heavy vehicles":
-            pcu = heavy_pcu
-        else:
-            pcu = sum(
-                light_pcus[index]
-                for index in column_indices
-                if index < _HEAVY_COLUMN_START
-            )
+        pcu = sum(column_pcus[index] for index in column_indices if index < len(column_pcus))
         factor = round(pcu / aadt, 2) if aadt else 0.0
         categories.append(VehicleCategoryResult(name, aadt, factor, pcu))
 
@@ -236,10 +233,12 @@ def build_aadt_pcu_description(result: AadtPcuResult) -> str:
     return (
         f"- {base_aadt_label} is {result.base_total_aadt:,}\n\n"
         f"- {base_pcu_label} is {result.base_total_pcu:,}\n\n"
+        f"- Area Type is {result.area_type}\n\n"
         f"- Design year for Geometry is {year}\n\n"
         f"- Projected AADT in {year} is {result.projected_total_aadt:,} "
         f"(growth rate {growth_pct:g}%)\n\n"
-        f"- Projected PCU in {year} is {result.projected_total_pcu:,}"
+        f"- Projected PCU in {year} is {result.projected_total_pcu:,} "
+        f"(vehicle counts grown by {growth_pct:g}%, then PCU factors applied)"
     )
 
 
@@ -248,6 +247,7 @@ def _empty_result(
     design_year_label: str = "",
     design_years: int = 0,
     growth_rate: float = 0.0,
+    area_type: str = DEFAULT_AREA_TYPE,
 ) -> AadtPcuResult:
     return AadtPcuResult(
         (),
@@ -258,31 +258,44 @@ def _empty_result(
         design_year_label=design_year_label,
         design_years=design_years,
         growth_rate=growth_rate,
+        area_type=normalize_area_type(area_type),
     )
 
 
 def compute_aadt_pcu(
     daily_totals: dict[str, list[int]] | None = None,
     *,
+    daily_totals_12h: dict[str, list[int]] | None = None,
+    daily_totals_24h: dict[str, list[int]] | None = None,
+    survey_hours: int = 12,
     count_hour: str = "12h",
     summary_total_row: list | None = None,
     design_years: int = 0,
     growth_rate: float = 0.0,
     design_year_label: str = "",
+    area_type: str = DEFAULT_AREA_TYPE,
 ) -> AadtPcuResult:
     """
-    Base AADT/PCU = sum of D1 + D2 columns (after count-hour power).
+    Base AADT/PCU = average of D1 and D2 for the selected count period (after power).
+    PCU = sum of round(count × area-type factor) for each vehicle column (C–T).
     Projected values grow each vehicle count by (1 + R) ** design_years, then PCU is recalculated.
     """
     if summary_total_row:
         vehicle_totals = vehicle_totals_from_summary_row(summary_total_row)
-    elif daily_totals:
-        vehicle_totals = sum_vehicle_totals(daily_totals, count_hour=count_hour)
+    elif daily_totals or daily_totals_12h or daily_totals_24h:
+        vehicle_totals = sum_vehicle_totals(
+            daily_totals,
+            daily_totals_12h=daily_totals_12h,
+            daily_totals_24h=daily_totals_24h,
+            survey_hours=survey_hours,
+            count_hour=count_hour,
+        )
     else:
         return _empty_result(
             design_year_label=design_year_label,
             design_years=design_years,
             growth_rate=growth_rate,
+            area_type=area_type,
         )
 
     if not vehicle_totals or not any(vehicle_totals):
@@ -290,11 +303,20 @@ def compute_aadt_pcu(
             design_year_label=design_year_label,
             design_years=design_years,
             growth_rate=growth_rate,
+            area_type=area_type,
         )
 
-    base_categories, base_aadt, base_pcu = _result_from_vehicle_totals(vehicle_totals)
+    resolved_area_type = normalize_area_type(area_type)
+    pcu_factors = pcu_factors_for_area_type(resolved_area_type)
+    base_categories, base_aadt, base_pcu = _result_from_vehicle_totals(
+        vehicle_totals,
+        pcu_factors=pcu_factors,
+    )
     projected_totals = project_vehicle_totals(vehicle_totals, design_years, growth_rate)
-    _projected_categories, projected_aadt, projected_pcu = _result_from_vehicle_totals(projected_totals)
+    _projected_categories, projected_aadt, projected_pcu = _result_from_vehicle_totals(
+        projected_totals,
+        pcu_factors=pcu_factors,
+    )
 
     return AadtPcuResult(
         base_categories,
@@ -305,6 +327,7 @@ def compute_aadt_pcu(
         design_year_label=design_year_label,
         design_years=design_years,
         growth_rate=growth_rate,
+        area_type=resolved_area_type,
         input_source="read_data",
     )
 
@@ -316,11 +339,13 @@ def compute_aadt_pcu_from_direct_input(
     design_years: int = 0,
     growth_rate: float = 0.0,
     design_year_label: str = "",
+    area_type: str = DEFAULT_AREA_TYPE,
 ) -> AadtPcuResult:
     """Use manually entered AADT and PCU from the Direct Input section."""
     base_pcu_int = int(round(base_pcu))
     projected_aadt = project_traffic_value(float(base_aadt), design_years, growth_rate)
     projected_pcu = project_traffic_value(base_pcu, design_years, growth_rate)
+    resolved_area_type = normalize_area_type(area_type)
 
     return AadtPcuResult(
         (),
@@ -331,6 +356,7 @@ def compute_aadt_pcu_from_direct_input(
         design_year_label=design_year_label,
         design_years=design_years,
         growth_rate=growth_rate,
+        area_type=resolved_area_type,
         input_source="direct_input",
     )
 
@@ -341,19 +367,27 @@ def compute_aadt_pcu_from_workbook_data(
     design_years: int = 0,
     growth_rate: float = 0.0,
     design_year_label: str = "",
+    area_type: str = DEFAULT_AREA_TYPE,
 ) -> AadtPcuResult:
     """Convenience wrapper for session data stored in main_window."""
     daily_totals = data.get("daily_totals")
+    daily_totals_12h = data.get("daily_totals_12h")
+    daily_totals_24h = data.get("daily_totals_24h")
+    survey_hours = int(data.get("survey_hours") or 12)
     count_hour = data.get("traffic_count_hour", "12h")
     summary_total_row = data.get("summary_total_row")
 
-    if daily_totals:
+    if daily_totals or daily_totals_12h or daily_totals_24h:
         return compute_aadt_pcu(
             daily_totals,
+            daily_totals_12h=daily_totals_12h,
+            daily_totals_24h=daily_totals_24h,
+            survey_hours=survey_hours,
             count_hour=count_hour,
             design_years=design_years,
             growth_rate=growth_rate,
             design_year_label=design_year_label,
+            area_type=area_type,
         )
     if summary_total_row:
         return compute_aadt_pcu(
@@ -361,9 +395,11 @@ def compute_aadt_pcu_from_workbook_data(
             design_years=design_years,
             growth_rate=growth_rate,
             design_year_label=design_year_label,
+            area_type=area_type,
         )
     return _empty_result(
         design_year_label=design_year_label,
         design_years=design_years,
         growth_rate=growth_rate,
+        area_type=area_type,
     )

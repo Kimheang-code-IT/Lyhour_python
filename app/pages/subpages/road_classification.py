@@ -1,14 +1,24 @@
 """Road Classification subpage."""
-from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from app.pages.subpages.common import result_card
-
-_PLACEHOLDER = "____"
+from app.core.result_description_html import result_title_style
+from app.data.road_classification import build_road_classification_text
+from app.pages.subpages.common import (
+    configure_result_description_note_layout,
+    result_card,
+    result_description_label,
+    result_description_note,
+)
 
 
 class RoadClassificationPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._design_year: str | None = None
+        self._total_aadt: int | None = None
+        self._total_pcu: int | None = None
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -16,35 +26,21 @@ class RoadClassificationPage(QWidget):
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(12, 12, 12, 12)
         card_layout.setSpacing(12)
+        card_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        title = QLabel("Road Classification")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;")
-        card_layout.addWidget(title)
+        self._title = result_description_label()
+        card_layout.addWidget(self._title, 0, Qt.AlignmentFlag.AlignTop)
 
-        note = QFrame()
-        note.setObjectName("roadClassificationNote")
-        note.setStyleSheet("""
-            #roadClassificationNote {
-                border: 1px solid #3e3e40;
-                border-radius: 4px;
-            }
-        """)
+        note = result_description_note(dark_background=False)
         note_layout = QVBoxLayout(note)
-        note_layout.setContentsMargins(36, 28, 36, 28)
+        note_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self._description = QLabel()
-        self._description.setWordWrap(True)
-        self._description.setStyleSheet("""
-            color: #1f5eff;
-            font-family: 'Segoe Print', 'Comic Sans MS';
-            font-size: 26px;
-            line-height: 1.6;
-        """)
-        note_layout.addWidget(self._description)
-        note_layout.addStretch()
+        self._description = result_description_label()
+        configure_result_description_note_layout(note_layout, self._description)
 
-        card_layout.addWidget(note, 1)
-        layout.addWidget(card, 1)
+        card_layout.addWidget(note, 1, Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(card, 1, Qt.AlignmentFlag.AlignTop)
+        self.refresh_ui_scale()
         self.set_road_classification(None, None, None)
 
     def set_road_classification(
@@ -53,11 +49,22 @@ class RoadClassificationPage(QWidget):
         total_aadt: int | None,
         total_pcu: int | None,
     ) -> None:
-        year = design_year.strip() if design_year else _PLACEHOLDER
-        aadt = f"{total_aadt:,}" if total_aadt else _PLACEHOLDER
-        pcu = f"{total_pcu:,}" if total_pcu else _PLACEHOLDER
+        self._design_year = design_year
+        self._total_aadt = total_aadt
+        self._total_pcu = total_pcu
+        self._apply_description()
+
+    def _apply_description(self) -> None:
         self._description.setText(
-            f"- The design year is {year}\n\n"
-            f"- So the projected AADT in {year}\n\n"
-            f"  is {aadt} and projected PCU in {pcu}"
+            build_road_classification_text(
+                self._design_year or "",
+                self._total_aadt,
+                self._total_pcu,
+            )
         )
+
+    def refresh_ui_scale(self) -> None:
+        self._title.setText(
+            f'<span style="{result_title_style()}">Road Classification</span>'
+        )
+        self._apply_description()

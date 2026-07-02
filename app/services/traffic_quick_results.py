@@ -1,6 +1,7 @@
 """Build compact traffic analysis values for the Quick Results panel."""
 from __future__ import annotations
 
+from app.data.road_classification import road_classification_code
 from app.services.traffic_aadt_pcu import parse_design_years
 from app.services.traffic_lane_projection import (
     DEFAULT_CAPACITY_PER_LANE,
@@ -90,7 +91,14 @@ def build_traffic_quick_results(
         results["PCU"] = pcu
 
     road_year = (geometry_design_year or aadt_pcu.get("design_year_label") or "").strip()
-    if road_year and (aadt or pcu):
+    projected_aadt = aadt_pcu.get("projected_aadt", aadt_pcu.get("total_aadt"))
+    projected_pcu = aadt_pcu.get("projected_pcu", aadt_pcu.get("total_pcu"))
+    if projected_aadt and int(projected_aadt) > 0:
+        results["Road classification"] = road_classification_code(
+            int(projected_aadt),
+            int(projected_pcu) if projected_pcu else None,
+        )
+    elif road_year and (aadt or pcu):
         results["Road classification"] = road_year
 
     design_years = parse_design_years(road_year)

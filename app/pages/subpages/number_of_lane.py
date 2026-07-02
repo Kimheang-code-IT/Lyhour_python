@@ -3,6 +3,8 @@ import math
 
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from app.core.ui_scale import UiScale
+from app.core.ui_style import section_title_style, subtitle_style
 from app.pages.subpages.common import BarChart, result_card
 from app.services.traffic_lane_projection import LaneProjectionResult, chart_bars_from_projection
 
@@ -20,24 +22,27 @@ class NumberOfLanePage(QWidget):
         card_layout.setContentsMargins(12, 12, 12, 12)
         card_layout.setSpacing(8)
 
-        title = QLabel("Number of Lane")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;")
-        card_layout.addWidget(title)
+        self._title = QLabel("Number of Lane")
+        card_layout.addWidget(self._title)
 
         self._subtitle = QLabel("Required Road Lanes by Future Year")
-        self._subtitle.setStyleSheet("font-size: 14px; color: #cccccc;")
         card_layout.addWidget(self._subtitle)
 
         self._chart_slot = QVBoxLayout()
         self._chart_slot.setContentsMargins(0, 0, 0, 0)
         self._chart = BarChart([], y_step=1, show_values=True)
-        self._chart.setMinimumHeight(360)
         self._chart_slot.addWidget(self._chart, 1)
         card_layout.addLayout(self._chart_slot, 1)
         layout.addWidget(card, 1)
+        self.refresh_ui_scale()
 
     def set_lane_projection(self, result: LaneProjectionResult | None) -> None:
         self._result = result
+        self._refresh_chart()
+
+    def refresh_ui_scale(self) -> None:
+        self._title.setStyleSheet(section_title_style(18))
+        self._subtitle.setStyleSheet(subtitle_style(14))
         self._refresh_chart()
 
     def _refresh_chart(self) -> None:
@@ -56,7 +61,7 @@ class NumberOfLanePage(QWidget):
         self._chart_slot.removeWidget(self._chart)
         self._chart.deleteLater()
         self._chart = BarChart(bars, y_step=y_step, show_values=True)
-        self._chart.setMinimumHeight(360)
+        self._chart.setMinimumHeight(UiScale.px(360))
         self._chart_slot.addWidget(self._chart, 1)
 
     @staticmethod

@@ -19,10 +19,19 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from app.pages.subpages.common import BarChart, result_card
+from app.core.ui_scale import UiScale
+from app.core.ui_style import card_title_style, section_title_style
+from app.pages.subpages.common import (
+    BarChart,
+    configure_result_description_note_layout,
+    result_card,
+    result_description_label,
+    result_description_note,
+    wrap_result_description_lines,
+)
 from app.services.traffic_esal import (
     EsalResult,
-    build_design_period_description,
+    build_design_period_description_html,
     chart_bars_from_esal,
 )
 
@@ -39,11 +48,15 @@ _HEADER_ROW_HEIGHT = 34
 _BODY_ROW_WEIGHTS = (1.0, 1.0, 1.15, 1.35)
 _COLUMN_WEIGHTS = (3.0, 3.5, 1.2, 3.0, 3.5, 1.2)
 
-_EMPTY_DESCRIPTION = (
-    "- Design period in 15 year is ____\n\n"
-    "- Design period in 20 year is ____\n\n"
-    "- Design period in 25 year is ____"
+_EMPTY_DESCRIPTION_LINES = (
+    "- Design period in 15 year is ____",
+    "- Design period in 20 year is ____",
+    "- Design period in 25 year is ____",
 )
+
+
+def _empty_description(*, panel_width: int | None = None) -> str:
+    return wrap_result_description_lines(list(_EMPTY_DESCRIPTION_LINES), panel_width=panel_width)
 
 
 def _image_assets_dir() -> Path:
@@ -100,12 +113,19 @@ class DescriptionCell(QLabel):
 
     def __init__(self, text: str, *, background: str = "#ffffff", parent: QWidget | None = None):
         super().__init__(text, parent)
+        self._background = background
         self.setWordWrap(True)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet(
-            f"background-color: {background}; color: #111111; padding: 8px; font-size: 10pt;"
-        )
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.apply_ui_scale(table_width=0)
+
+    def apply_ui_scale(self, *, table_width: int) -> None:
+        padding = UiScale.px_local(8, table_width, reference=900)
+        font_pt = UiScale.pt_local(10, table_width, reference=900)
+        self.setStyleSheet(
+            f"background-color: {self._background}; color: #111111; "
+            f"padding: {padding}px; font-size: {font_pt}pt;"
+        )
 
 
 class EsalAxleTable(QTableWidget):
@@ -132,19 +152,58 @@ class EsalAxleTable(QTableWidget):
         self.setSizeAdjustPolicy(QTableWidget.SizeAdjustPolicy.AdjustIgnored)
         self.verticalHeader().setMinimumSectionSize(1)
         self.horizontalHeader().setMinimumSectionSize(1)
-        self.setStyleSheet("""
-            QTableWidget {
+        self.setStyleSheet(f"""
+            QTableWidget {{
                 background-color: #d8d8dc;
                 color: #111111;
                 border: 1px solid #606060;
                 gridline-color: #606060;
-            }
-            QTableWidget::item {
-                padding: 6px;
-            }
+            }}
+            QTableWidget::item {{
+                padding: {UiScale.px(6)}px;
+            }}
         """)
         self._populate()
         self._configure_resize_modes()
+
+    def apply_ui_scale(self) -> None:
+        table_width = max(self.viewport().width(), self.width(), 1)
+        padding = UiScale.px_local(6, table_width, reference=900)
+        self.setStyleSheet(f"""
+            QTableWidget {{
+                background-color: #d8d8dc;
+                color: #111111;
+                border: 1px solid #606060;
+                gridline-color: #606060;
+            }}
+            QTableWidget::item {{
+                padding: {padding}px;
+            }}
+        """)
+
+        header_pt = UiScale.pt_local(10, table_width, reference=900)
+        number_pt = UiScale.pt_local(11, table_width, reference=900)
+        for row in range(self.rowCount()):
+            for column in range(self.columnCount()):
+                item = self.item(row, column)
+                if item is None:
+                    continue
+                font = item.font()
+                if row == 0:
+                    font.setPointSizeF(header_pt)
+                    font.setBold(True)
+                elif column in (2, 5):
+                    font.setPointSizeF(number_pt)
+                    font.setBold(True)
+                item.setFont(font)
+
+        for row in range(self.rowCount()):
+            for column in range(self.columnCount()):
+                widget = self.cellWidget(row, column)
+                if isinstance(widget, DescriptionCell):
+                    widget.apply_ui_scale(table_width=table_width)
+
+        self._fit_table_layout()
 
     def _configure_resize_modes(self) -> None:
         vertical_header = self.verticalHeader()
@@ -164,7 +223,7 @@ class EsalAxleTable(QTableWidget):
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item.setBackground(header_brush)
             font = item.font()
-            font.setPointSize(10)
+            font.setPointSizeF(UiScale.pt(10))
             font.setBold(True)
             item.setFont(font)
             self.setItem(row, column, item)
@@ -174,7 +233,7 @@ class EsalAxleTable(QTableWidget):
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item.setBackground(body_brush)
             font = item.font()
-            font.setPointSize(11)
+            font.setPointSizeF(UiScale.pt(11))
             font.setBold(True)
             item.setFont(font)
             self.setItem(row, column, item)
@@ -238,6 +297,7 @@ class EsalAxleTable(QTableWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._fit_table_layout()
+        self.apply_ui_scale()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -249,7 +309,7 @@ class EsalAxleTable(QTableWidget):
         if viewport_height <= 0 or viewport_width <= 0:
             return
 
-        header_height = min(_HEADER_ROW_HEIGHT, max(20, viewport_height // 8))
+        header_height = min(UiScale.px(_HEADER_ROW_HEIGHT), max(UiScale.px(20), viewport_height // 8))
         self.setRowHeight(0, header_height)
 
         body_height = max(1, viewport_height - header_height)
@@ -303,12 +363,11 @@ class EsalPage(QWidget):
         table_layout.setContentsMargins(12, 12, 12, 12)
         table_layout.setSpacing(8)
 
-        title = QLabel("ESAL Axle Type Summary")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;")
-        table_layout.addWidget(title)
+        self._table_title = QLabel("ESAL Axle Type Summary")
+        table_layout.addWidget(self._table_title)
 
         self._axle_table = EsalAxleTable()
-        self._axle_table.setMinimumHeight(180)
+        self._axle_table.setMinimumHeight(UiScale.px(180))
         table_layout.addWidget(self._axle_table, 1)
         layout.addWidget(table_card, 3)
 
@@ -320,9 +379,8 @@ class EsalPage(QWidget):
         chart_layout = QVBoxLayout(chart_card)
         chart_layout.setContentsMargins(12, 12, 12, 12)
 
-        chart_title = QLabel("ESAL by Design Period")
-        chart_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;")
-        chart_layout.addWidget(chart_title)
+        self._chart_title = QLabel("ESAL by Design Period")
+        chart_layout.addWidget(self._chart_title)
 
         self._chart_slot = QVBoxLayout()
         self._chart_slot.setContentsMargins(0, 0, 0, 0)
@@ -334,36 +392,38 @@ class EsalPage(QWidget):
         description_card = result_card()
         description_layout = QVBoxLayout(description_card)
         description_layout.setContentsMargins(12, 12, 12, 12)
+        description_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        description_title = QLabel("Design Period Description")
-        description_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;")
-        description_layout.addWidget(description_title)
+        self._description_title = QLabel("Design Period Description")
+        description_layout.addWidget(self._description_title, 0, Qt.AlignmentFlag.AlignTop)
 
-        note = QFrame()
-        note.setObjectName("esalDescriptionNote")
-        note.setStyleSheet("""
-            #esalDescriptionNote {
-                border: 1px solid #3e3e40;
-                border-radius: 4px;
-            }
-        """)
+        note = result_description_note(dark_background=False)
         note_layout = QVBoxLayout(note)
-        note_layout.setContentsMargins(24, 24, 24, 24)
+        note_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self._description = QLabel(_EMPTY_DESCRIPTION)
-        self._description.setWordWrap(True)
-        self._description.setStyleSheet("""
-            color: #1f5eff;
-            font-family: 'Segoe Print', 'Comic Sans MS';
-            font-size: 15px;
-            line-height: 1.4;
-        """)
-        note_layout.addWidget(self._description)
-        note_layout.addStretch()
-        description_layout.addWidget(note, 1)
-        description_layout.addStretch()
+        self._description = result_description_label()
+        configure_result_description_note_layout(note_layout, self._description)
+        description_layout.addWidget(note, 1, Qt.AlignmentFlag.AlignTop)
         bottom_row.addWidget(description_card, 1)
         layout.addLayout(bottom_row, 2)
+        self.refresh_ui_scale()
+
+    def _description_panel_width(self) -> int:
+        width = self._description.width()
+        if width > 0:
+            return width
+        note = self._description.parentWidget()
+        if note is not None and note.width() > 0:
+            return note.width()
+        return UiScale.width() // 3
+
+    def refresh_ui_scale(self) -> None:
+        self._table_title.setStyleSheet(section_title_style(18))
+        self._chart_title.setStyleSheet(card_title_style(14))
+        self._description_title.setStyleSheet(card_title_style(14))
+        self._axle_table.setMinimumHeight(UiScale.px(180))
+        self._axle_table.apply_ui_scale()
+        self._refresh()
 
     def set_esal_result(self, result: EsalResult | None) -> None:
         self._result = result
@@ -376,16 +436,30 @@ class EsalPage(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._axle_table._fit_table_layout()
+        self._axle_table.apply_ui_scale()
+        panel_width = self._description_panel_width()
+        if self._result is not None and self._result.has_data:
+            description = build_design_period_description_html(
+                self._result.design_periods,
+                panel_width=panel_width,
+            )
+        else:
+            description = _empty_description(panel_width=panel_width)
+        self._description.setText(description)
 
     def _refresh(self) -> None:
+        panel_width = self._description_panel_width()
         if self._result is not None and self._result.has_data:
             self._axle_table.update_numbers(self._result.axle_numbers)
             bars = chart_bars_from_esal(self._result)
-            description = build_design_period_description(self._result.design_periods)
+            description = build_design_period_description_html(
+                self._result.design_periods,
+                panel_width=panel_width,
+            )
         else:
             self._axle_table.update_numbers(None)
             bars = []
-            description = _EMPTY_DESCRIPTION
+            description = _empty_description(panel_width=panel_width)
 
         self._description.setText(description)
         y_step = self._chart_y_step(bars)

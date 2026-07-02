@@ -3,6 +3,8 @@ import math
 
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from app.core.ui_scale import UiScale
+from app.core.ui_style import card_title_style, subtitle_style
 from app.pages.subpages.common import BarChart, result_card
 from app.services.traffic_aadt_pcu import AadtPcuResult
 
@@ -21,30 +23,31 @@ class AadtPcuPage(QWidget):
         card_layout.setContentsMargins(12, 12, 12, 12)
         card_layout.setSpacing(12)
 
-        title = QLabel("AADT & PCU")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;")
-        card_layout.addWidget(title)
+        self._chart_title = QLabel("By Design Period")
+        card_layout.addWidget(self._chart_title)
 
-        chart_title = QLabel("AADT & PCU by Design Period")
-        chart_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;")
-        card_layout.addWidget(chart_title)
-
-        self._subtitle = QLabel("Upload Excel from Traffic Analysis Input to calculate AADT and PCU.")
-        self._subtitle.setStyleSheet("font-size: 14px; color: #cccccc;")
+        self._subtitle = QLabel("Upload Excel from Traffic Analysis Input to calculate.")
         self._subtitle.setWordWrap(True)
         card_layout.addWidget(self._subtitle)
 
         self._chart_slot = QVBoxLayout()
         self._chart_slot.setContentsMargins(0, 0, 0, 0)
         self._chart = BarChart([], y_step=10000, show_values=True)
-        self._chart.setMinimumHeight(360)
         self._chart_slot.addWidget(self._chart, 1)
         card_layout.addLayout(self._chart_slot, 1)
 
         layout.addWidget(card, 1)
+        self.refresh_ui_scale()
 
     def set_aadt_pcu_result(self, result: AadtPcuResult | None) -> None:
         self._result = result
+        self._refresh()
+
+    def refresh_ui_scale(self) -> None:
+        self._chart_title.setStyleSheet(card_title_style(14))
+        self._subtitle.setStyleSheet(subtitle_style(14))
+        chart_height = UiScale.px(360)
+        self._chart.setMinimumHeight(chart_height)
         self._refresh()
 
     def _refresh(self) -> None:
@@ -58,22 +61,23 @@ class AadtPcuPage(QWidget):
                 source = "Excel count data"
             subtitle = (
                 f"Source: {source} | "
+                f"Area Type = {self._result.area_type} | "
                 f"Growth rate R = {growth_pct:g}% | "
                 f"Design year for Geometry = {year}"
             )
         else:
             bars = []
             if self._result is not None and self._result.input_source == "direct_input":
-                subtitle = "Enter AADT and PCU in the Direct Input section on the Input page."
+                subtitle = "Enter values in the Direct Input section on the Input page."
             else:
-                subtitle = "Upload Excel from Traffic Analysis Input to calculate AADT and PCU."
+                subtitle = "Upload Excel from Traffic Analysis Input to calculate."
 
         self._subtitle.setText(subtitle)
         y_step = self._chart_y_step(bars)
         self._chart_slot.removeWidget(self._chart)
         self._chart.deleteLater()
         self._chart = BarChart(bars, y_step=y_step, show_values=True)
-        self._chart.setMinimumHeight(360)
+        self._chart.setMinimumHeight(UiScale.px(360))
         self._chart_slot.addWidget(self._chart, 1)
 
     @staticmethod
