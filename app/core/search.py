@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QStyle,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint
 from PyQt6.QtGui import QKeyEvent, QColor, QIcon
 
 from app.core.i18n import nav_label, tr
@@ -261,17 +261,31 @@ class SearchPalette(QFrame):
 
         super().keyPressEvent(event)
 
+    def _topbar_widget(self, anchor: QWidget) -> QWidget | None:
+        widget = anchor
+        while widget is not None:
+            if widget.objectName() == "titleBar":
+                return widget
+            widget = widget.parentWidget()
+        return None
+
     def show_at_top(self, anchor: QWidget):
-        """Show palette at top-0 of window, centered horizontally."""
-        win = anchor.window()
-        if not win:
-            return
+        """Show palette centered on the navbar, directly below it."""
+        topbar = self._topbar_widget(anchor)
+        if topbar is not None:
+            origin = topbar.mapToGlobal(QPoint(0, 0))
+            x = origin.x() + max(0, (topbar.width() - self.width()) // 2)
+            y = origin.y() + topbar.height()
+            self.setGeometry(x, y, self.width(), self.height())
+        else:
+            win = anchor.window()
+            if win is None:
+                return
+            geometry = win.geometry()
+            x = geometry.x() + max(0, (geometry.width() - self.width()) // 2)
+            y = geometry.y()
+            self.setGeometry(x, y, self.width(), self.height())
 
-        gw = win.geometry()
-        x = gw.x() + max(0, (gw.width() - self.width()) // 2)
-        y = gw.y() + 0
-
-        self.setGeometry(x, y, self.width(), self.height())
         self.show()
         self.raise_()
         self.activateWindow()

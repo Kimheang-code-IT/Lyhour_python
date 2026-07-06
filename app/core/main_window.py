@@ -33,6 +33,7 @@ from app.widgets.loading_overlay import LoadingOverlay
 from app.widgets.dialog import info
 from app.services.pdf_export import export_pdf
 from app.services.excel_io import ExcelIOService
+from app.services.tld_io import TldIOService
 from app.services.file_history import FileHistoryStore
 from app.services.excel_session import ExcelSessionCache
 from app.widgets.file_tab_bar import FileTabBar
@@ -169,8 +170,10 @@ class MainWindow(QMainWindow):
         self.calc_state = {"inputs": {}, "results": {}}
         self.current_file_path: str | None = None
         self._active_excel_session: str | None = None
+        self._active_tld_session: str | None = None
         self._open_excel_sessions: list[str] = []
         self._excel_io = ExcelIOService.instance()
+        self._tld_io = TldIOService.instance()
         self._pending_road_classification: tuple[str | None, int | None, int | None] = (
             None,
             None,
@@ -216,11 +219,78 @@ class MainWindow(QMainWindow):
             if entry is not None:
                 open_entries.append(entry)
         self.file_tab_bar.set_tabs(open_entries, active_session_id=self._active_excel_session)
+        self.file_tab_bar.hide()
 
     def open_recent_imports_dialog(self) -> None:
-        session_id = pick_recent_import(self, FileHistoryStore.instance().entries)
-        if session_id:
+        history = FileHistoryStore.instance()
+
+        def on_remove_entry(session_id: str) -> None:
+            entry = history.get(session_id)
+            self.remove_import(session_id)
+            if entry is not None:
+                self.statusBar().showMessage(tr("file.recent.removed").format(name=entry.file_name), 4000)
+
+        session_id = pick_recent_import(
+            self,
+            lambda: history.entries,
+            on_remove=on_remove_entry,
+        )
+        if not session_id:
+            return
+        entry = history.get(session_id)
+        if entry is not None and entry.is_tld:
+            self.activate_tld_session(session_id)
+        else:
             self.activate_excel_session(session_id)
+
+    def remove_import(self, session_id: str) -> None:
+        """Remove a traffic or TLD import from cache/history."""
+        entry = FileHistoryStore.instance().get(session_id)
+        if entry is not None and entry.is_tld:
+            was_active = self._active_tld_session == session_id
+            self._tld_io.remove_from_history(session_id)
+            if was_active:
+                self._clear_active_tld_import()
+            return
+
+        self.remove_excel_import(session_id)
+
+    def remove_excel_import(self, session_id: str) -> None:
+        """Remove cached import data and history entry so the file can be re-imported."""
+        was_active = self._active_excel_session == session_id
+        self._excel_io.remove_from_history(session_id)
+        if session_id in self._open_excel_sessions:
+            self._open_excel_sessions.remove(session_id)
+        if was_active:
+            self._clear_active_traffic_import()
+        self.refresh_file_tabs()
+
+    def _clear_active_traffic_import(self) -> None:
+        self._active_excel_session = None
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        tld_data = traffic_state.get("tld_data")
+        tld_session = self._active_tld_session
+        traffic_state.clear()
+        if tld_data is not None:
+            traffic_state["tld_data"] = tld_data
+        if tld_session:
+            self._active_tld_session = tld_session
+        self._apply_traffic_summary([], None)
+        self.refresh_lane_projection()
+        self.refresh_esal()
+
+    def _clear_active_tld_import(self) -> None:
+        self._active_tld_session = None
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        traffic_state.pop("tld_data", None)
+        if traffic_state.get("esal_load_mode") == "tld":
+            traffic_state.pop("esal_load_mode", None)
+        self.refresh_esal()
+        detail_page = self._page_widgets[1] if len(self._page_widgets) > 1 else None
+        if detail_page is not None and hasattr(detail_page, "esal_page"):
+            esal_page = detail_page.esal_page
+            if hasattr(esal_page, "clear_tld_excel"):
+                esal_page.clear_tld_excel()
 
     def _open_excel_tab(self, session_id: str) -> None:
         if session_id in self._open_excel_sessions:
@@ -265,7 +335,59 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(tr("file.import.ok").format(name=result.file_name), 5000)
         return True
 
+    def import_tld_file(self, path: str) -> bool:
+        try:
+            result = self._tld_io.import_tld_workbook(path)
+        except Exception as exc:
+            logger.exception("TLD import failed")
+            QMessageBox.warning(self, "Read TLD Excel", f"Could not read TLD data:\n{exc}")
+            return False
+
+        data = self._tld_io.load_session(result.session_id)
+        if not data:
+            QMessageBox.warning(self, "Read TLD Excel", tr("file.import.failed"))
+            return False
+
+        self._active_tld_session = result.session_id
+        self.set_tld_excel_data(data)
+        self._present_tld_import(data)
+        self._navigate_to_traffic_esal()
+        self.statusBar().showMessage(tr("file.tld.import.ok").format(name=result.file_name), 5000)
+        return True
+
+    def activate_tld_session(self, session_id: str) -> None:
+        data = self._tld_io.load_session(session_id)
+        if not data:
+            QMessageBox.information(self, "Read TLD Excel", tr("file.session.missing"))
+            self.remove_import(session_id)
+            return
+        self._active_tld_session = str(data.get("session_id") or session_id)
+        self.set_tld_excel_data(data)
+        self._present_tld_import(data)
+        self._navigate_to_traffic_esal()
+
+    def _present_tld_import(self, data: dict) -> None:
+        source_path = str(data.get("source_path") or "")
+        detail_page = self._page_widgets[1] if len(self._page_widgets) > 1 else None
+        if detail_page is not None and hasattr(detail_page, "esal_page"):
+            esal_page = detail_page.esal_page
+            if hasattr(esal_page, "restore_tld_import"):
+                esal_page.restore_tld_import(source_path or None)
+
+    def _navigate_to_traffic_esal(self) -> None:
+        from app.core.page_registry import TRAFFIC_ANALYSIS
+
+        self._on_page_changed(TRAFFIC_ANALYSIS)
+        self.nav.set_current_index(TRAFFIC_ANALYSIS)
+        detail_page = self._page_widgets[1] if len(self._page_widgets) > 1 else None
+        if detail_page is not None and hasattr(detail_page, "show_esal_tab"):
+            detail_page.show_esal_tab()
+
     def activate_excel_session(self, session_id: str) -> None:
+        entry = FileHistoryStore.instance().get(session_id)
+        if entry is not None and entry.is_tld:
+            self.activate_tld_session(session_id)
+            return
         data = self._excel_io.load_session(session_id)
         if not data:
             QMessageBox.information(self, tr("menu.file.import_excel"), tr("file.session.missing"))
@@ -285,19 +407,15 @@ class MainWindow(QMainWindow):
         if session_id in self._open_excel_sessions:
             self._open_excel_sessions.remove(session_id)
         if self._active_excel_session == session_id:
-            self._active_excel_session = None
-            traffic_state = self.calc_state.setdefault("traffic_analysis", {})
-            traffic_state.clear()
-            self._apply_traffic_summary([], None)
-            self.refresh_lane_projection()
-            self.refresh_esal()
+            self._clear_active_traffic_import()
         self.refresh_file_tabs()
 
     def clear_excel_history(self) -> None:
         FileHistoryStore.instance().clear()
         ExcelSessionCache.instance().clear()
-        self._active_excel_session = None
         self._open_excel_sessions.clear()
+        self._clear_active_traffic_import()
+        self._clear_active_tld_import()
         self.refresh_file_tabs()
 
     def export_excel_summary_dialog(self) -> None:
@@ -767,48 +885,35 @@ class MainWindow(QMainWindow):
         traffic_state["standard_lane_count"] = lane_count
 
         geometry_design_years = 0
+        pavement_design_years = 0
         if input_page is not None and hasattr(input_page, "active_geometry_design_year"):
             geometry_design_years = parse_design_years(input_page.active_geometry_design_year())
+        if input_page is not None and hasattr(input_page, "active_pavement_design_year"):
+            pavement_design_years = parse_design_years(input_page.active_pavement_design_year())
         traffic_state["geometry_design_years"] = geometry_design_years
+        traffic_state["pavement_design_years"] = pavement_design_years
 
         has_traffic_data = bool(daily_totals or daily_totals_12h or daily_totals_24h)
-        tld_data = traffic_state.get("tld_data") or {}
-        has_tld_values = load_mode == "tld" and bool(tld_data.get("has_parsed_values"))
-        if not has_traffic_data and not has_tld_values:
+        use_tld = load_mode == "tld"
+        if not has_traffic_data and not use_tld:
             traffic_state["esal"] = None
             self._apply_esal_result(None)
             self.refresh_traffic_quick_results()
             return
 
         try:
-            if load_mode == "tld":
-                tld_data = traffic_state.get("tld_data")
-                if tld_data and tld_data.get("has_parsed_values"):
-                    from app.services.traffic_esal import compute_esal_from_tld_data
+            from app.services.traffic_esal import compute_esal_from_workbook_data
 
-                    result = compute_esal_from_tld_data(
-                        tld_data,
-                        growth_rate=growth_rate,
-                        geometry_design_years=geometry_design_years,
-                    )
-                else:
-                    from app.services.traffic_esal import compute_esal_from_workbook_data
-
-                    result = compute_esal_from_workbook_data(
-                        traffic_state,
-                        growth_rate=growth_rate,
-                        lane_count=1,
-                        geometry_design_years=geometry_design_years,
-                    )
-            else:
-                from app.services.traffic_esal import compute_esal_from_workbook_data
-
-                result = compute_esal_from_workbook_data(
-                    traffic_state,
-                    growth_rate=growth_rate,
-                    lane_count=lane_count,
-                    geometry_design_years=geometry_design_years,
-                )
+            use_tld = load_mode == "tld"
+            tld_data = traffic_state.get("tld_data") if use_tld else None
+            result = compute_esal_from_workbook_data(
+                traffic_state,
+                growth_rate=growth_rate,
+                lane_count=lane_count,
+                pavement_design_years=pavement_design_years,
+                use_tld=use_tld,
+                tld_data=tld_data,
+            )
         except Exception:
             result = None
 
@@ -852,6 +957,9 @@ class MainWindow(QMainWindow):
         traffic_state = self.calc_state.setdefault("traffic_analysis", {})
         traffic_state["tld_data"] = data
         traffic_state["esal_load_mode"] = "tld"
+        session_id = data.get("session_id")
+        if session_id:
+            self._active_tld_session = str(session_id)
         self.refresh_esal()
 
     def set_traffic_excel_data(self, data: dict) -> None:

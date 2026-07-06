@@ -92,6 +92,12 @@ class TrafficAnalysisInputPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
 
+        def _expand_width(widget: QWidget) -> QWidget:
+            """Make form control fill the available grid column width."""
+            policy = widget.sizePolicy()
+            widget.setSizePolicy(QSizePolicy.Policy.Expanding, policy.verticalPolicy())
+            return widget
+
         if _HAS_FLUENT and SubtitleLabel is not None:
             page_title = SubtitleLabel("Traffic Analysis Input")
         else:
@@ -131,27 +137,33 @@ class TrafficAnalysisInputPage(QWidget):
         self.read_r.setDecimals(2)
         self.read_r.setSuffix(" %")
         self.read_r.setValue(3.0)
+        _expand_width(self.read_r)
         add_labeled_row(read_grid, 0, "Traffic Growth Rate R =", self.read_r, ROW_HEIGHT)
         self.read_r.valueChanged.connect(self._on_growth_rate_changed)
 
         self.read_count_hour = make_combo(TRAFFIC_COUNT_HOURS)
+        _expand_width(self.read_count_hour)
         add_labeled_row(read_grid, 1, "Traffic Count Hour =", self.read_count_hour, ROW_HEIGHT)
         self.read_count_hour.currentTextChanged.connect(self._on_count_hour_changed)
 
         self.read_area_type = make_combo(AREA_TYPE_COMBO_OPTIONS)
         self.read_area_type.setCurrentText(DEFAULT_AREA_TYPE)
+        _expand_width(self.read_area_type)
         add_labeled_row(read_grid, 2, "Area Type =", self.read_area_type, ROW_HEIGHT)
         self.read_area_type.currentTextChanged.connect(self._on_area_type_changed)
 
         self.read_geometry_design_year = make_combo(DESIGN_YEAR_OPTIONS)
+        _expand_width(self.read_geometry_design_year)
         add_labeled_row(read_grid, 3, "Design year for Geometry =", self.read_geometry_design_year, ROW_HEIGHT)
         self.read_geometry_design_year.currentTextChanged.connect(self._on_geometry_design_year_changed)
 
         self.read_pavement_design_year = make_combo(DESIGN_YEAR_OPTIONS)
+        _expand_width(self.read_pavement_design_year)
         add_labeled_row(read_grid, 4, "Design year for Pavement =", self.read_pavement_design_year, ROW_HEIGHT)
         self.read_pavement_design_year.currentTextChanged.connect(self._on_pavement_design_year_changed)
 
         self.read_los = make_combo(LOS_OPTIONS)
+        _expand_width(self.read_los)
         add_labeled_row(read_grid, 5, "Level of Service LOS =", self.read_los, ROW_HEIGHT)
 
         scroll_layout.addWidget(read_section)
@@ -191,34 +203,42 @@ class TrafficAnalysisInputPage(QWidget):
         self.direct_r.setDecimals(2)
         self.direct_r.setSuffix(" %")
         self.direct_r.setValue(3.0)
+        _expand_width(self.direct_r)
         add_labeled_row(direct_grid, 0, "Traffic Growth Rate R =", self.direct_r, ROW_HEIGHT)
         self.direct_r.valueChanged.connect(self._on_growth_rate_changed)
 
         self.direct_count_hour = make_combo(TRAFFIC_COUNT_HOURS)
+        _expand_width(self.direct_count_hour)
         add_labeled_row(direct_grid, 1, "Traffic Count Hour =", self.direct_count_hour, ROW_HEIGHT)
         self.direct_count_hour.currentTextChanged.connect(self._on_count_hour_changed)
 
         self.direct_area_type = make_combo(AREA_TYPE_COMBO_OPTIONS)
         self.direct_area_type.setCurrentText(DEFAULT_AREA_TYPE)
+        _expand_width(self.direct_area_type)
         add_labeled_row(direct_grid, 2, "Area Type =", self.direct_area_type, ROW_HEIGHT)
         self.direct_area_type.currentTextChanged.connect(self._on_area_type_changed)
 
         self.direct_geometry_design_year = make_combo(DESIGN_YEAR_OPTIONS)
+        _expand_width(self.direct_geometry_design_year)
         add_labeled_row(direct_grid, 3, "Design year for Geometry =", self.direct_geometry_design_year, ROW_HEIGHT)
         self.direct_geometry_design_year.currentTextChanged.connect(self._on_geometry_design_year_changed)
 
         self.direct_pavement_design_year = make_combo(DESIGN_YEAR_OPTIONS)
+        _expand_width(self.direct_pavement_design_year)
         add_labeled_row(direct_grid, 4, "Design year for Pavement =", self.direct_pavement_design_year, ROW_HEIGHT)
         self.direct_pavement_design_year.currentTextChanged.connect(self._on_pavement_design_year_changed)
 
         self.direct_los = make_combo(LOS_OPTIONS)
+        _expand_width(self.direct_los)
         add_labeled_row(direct_grid, 5, "Level of Service LOS =", self.direct_los, ROW_HEIGHT)
 
         self.direct_aadt = make_integer_line_edit(maximum=9_999_999)
+        _expand_width(self.direct_aadt)
         add_labeled_row(direct_grid, 6, "Average Annual Daily Traffic AADT =", self.direct_aadt, ROW_HEIGHT)
         self.direct_aadt.textChanged.connect(self._on_direct_aadt_pcu_changed)
 
         self.direct_pcu = make_decimal_line_edit(maximum=9_999_999.99, decimals=2)
+        _expand_width(self.direct_pcu)
         add_labeled_row(direct_grid, 7, "Passenger Car Unit PCU =", self.direct_pcu, ROW_HEIGHT)
         self.direct_pcu.textChanged.connect(self._on_direct_aadt_pcu_changed)
 
@@ -358,6 +378,8 @@ class TrafficAnalysisInputPage(QWidget):
 
     def _on_pavement_design_year_changed(self, _text: str = "") -> None:
         mw = self.window()
+        if hasattr(mw, "refresh_esal"):
+            mw.refresh_esal()
         if hasattr(mw, "refresh_traffic_quick_results"):
             mw.refresh_traffic_quick_results()
 

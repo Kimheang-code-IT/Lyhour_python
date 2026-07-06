@@ -231,6 +231,23 @@ def table_stylesheet(tokens: ThemeTokens) -> str:
     """
 
 
+def topbar_stylesheet(tokens: ThemeTokens) -> str:
+  """Single full-width background for the application top bar."""
+  return f"""
+    #titleBar {{
+        background-color: {tokens.bg_panel};
+        border: none;
+        border-bottom: 1px solid {tokens.border};
+    }}
+    #titleBar #topbarLeft,
+    #titleBar #topbarRight,
+    #titleBar #toolbarButtons {{
+        background-color: transparent;
+        border: none;
+    }}
+    """
+
+
 def shell_stylesheet(tokens: ThemeTokens) -> str:
     return f"""
     #titleBar {{
@@ -238,11 +255,12 @@ def shell_stylesheet(tokens: ThemeTokens) -> str:
         border: none;
         border-bottom: 1px solid {tokens.border};
     }}
-    #titleContainer, #toolbarButtons, #centerSearchBar {{
+    #titleContainer, #toolbarButtons, #topbarLeft, #topbarRight {{
         background-color: transparent;
         border: none;
     }}
     #centerSearchBar {{
+        background-color: {tokens.bg_input};
         border: 1px solid {tokens.border};
         border-radius: 10px;
     }}

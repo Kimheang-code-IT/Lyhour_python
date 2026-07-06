@@ -131,3 +131,7 @@ class TrafficAnalysisDetailResultPage(QWidget):
 
     def set_esal_result(self, result) -> None:
         self.esal_page.set_esal_result(result)
+
+    def show_esal_tab(self) -> None:
+        self.segmented.setCurrentItem("esal")
+        self.stack.setCurrentWidget(self.esal_page)

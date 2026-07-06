@@ -11,6 +11,7 @@ from loguru import logger
 
 from app.services.excel_session import ExcelSessionCache
 from app.services.file_history import FileHistoryEntry, FileHistoryStore
+from app.services.import_session_utils import prune_other_sessions, session_id_matches_file
 from app.services.traffic_excel import read_traffic_investigation_workbook
 
 _EXCEL_FILTER = "Excel (*.xlsx);;All Files (*)"
@@ -83,8 +84,10 @@ class ExcelIOService:
             imported_at=datetime.now(timezone.utc).isoformat(),
             size_bytes=stat.st_size,
             count_hour=count_hour,
+            file_kind="traffic",
         )
         FileHistoryStore.instance().add(entry)
+        prune_other_sessions(path=str(resolved), keep_session_id=session_id, file_kind="traffic")
 
         rows = data.get("traffic_count_rows") or []
         logger.info("Imported Excel {} ({} rows, session {})", resolved.name, len(rows), session_id)
@@ -98,11 +101,17 @@ class ExcelIOService:
         )
 
     def load_session(self, session_id: str) -> dict | None:
+        entry = FileHistoryStore.instance().get(session_id)
+        if entry is not None and entry.file_kind == "traffic" and Path(entry.path).is_file():
+            if not session_id_matches_file(entry.path, session_id, tld=False):
+                self.remove_from_history(session_id)
+                result = self.import_traffic_workbook(entry.path, count_hour=entry.count_hour)
+                return ExcelSessionCache.instance().get(result.session_id)
+
         cached = ExcelSessionCache.instance().get(session_id)
         if cached is not None:
             return cached
 
-        entry = FileHistoryStore.instance().get(session_id)
         if entry is None or not Path(entry.path).is_file():
             return None
         result = self.import_traffic_workbook(entry.path, count_hour=entry.count_hour)

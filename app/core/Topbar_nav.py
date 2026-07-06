@@ -17,9 +17,9 @@ from PyQt6.QtGui import QShortcut, QKeySequence, QColor, QAction
 from app.core.theme import (
     kbd_hint_stylesheet,
     search_field_stylesheet,
-    shell_stylesheet,
     theme_tokens,
     topbar_button_stylesheet,
+    topbar_stylesheet,
 )
 from app.config.topbar_actions import TOPBAR_BUTTONS
 from app.config.shortcuts import APP_SHORTCUTS
@@ -43,7 +43,6 @@ try:
         TransparentPushButton,
         TransparentToolButton,
     )
-    from qfluentwidgets.components.widgets.menu import MenuAnimationType  # type: ignore[import-untyped]
     _HAS_FLUENT = True
 except ImportError:
     Action = None  # type: ignore[assignment,misc]
@@ -52,7 +51,6 @@ except ImportError:
     Theme = None  # type: ignore[assignment,misc]
     TransparentPushButton = None  # type: ignore[assignment,misc]
     TransparentToolButton = None  # type: ignore[assignment,misc]
-    MenuAnimationType = None  # type: ignore[assignment,misc]
     _HAS_FLUENT = False
 
 _BTN_STYLE = ""
@@ -141,18 +139,23 @@ class TopbarNav(QFrame):
         super().__init__(parent)
         self.setFixedHeight(36)
         self.setObjectName("titleBar")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setAutoFillBackground(True)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 0, 2, 0)
         layout.setSpacing(0)
 
-        self._build_toolbar_buttons(layout)
+        left_container = QFrame()
+        left_container.setObjectName("topbarLeft")
+        left_container.setAutoFillBackground(False)
+        left_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        left_layout = QHBoxLayout(left_container)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+        left_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._build_toolbar_buttons(left_layout)
+        layout.addWidget(left_container, 1)
 
-        self.title_container = QFrame()
-        self.title_container.setObjectName("titleContainer")
-        self.title_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        title_inner = QHBoxLayout(self.title_container)
-        title_inner.setContentsMargins(0, 4, 0, 4)
-        title_inner.setSpacing(10)
         search_bar = QFrame()
         search_bar.setObjectName("centerSearchBar")
         search_bar.setFixedHeight(28)
@@ -179,10 +182,16 @@ class TopbarNav(QFrame):
         shadow.setYOffset(1)
         shadow.setColor(QColor(0, 0, 0, 50))
         search_bar.setGraphicsEffect(shadow)
-        title_inner.addStretch(1)
-        title_inner.addWidget(search_bar)
-        title_inner.addStretch(1)
-        layout.addWidget(self.title_container, 1)
+        layout.addWidget(search_bar, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+
+        right_container = QFrame()
+        right_container.setObjectName("topbarRight")
+        right_container.setAutoFillBackground(False)
+        right_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        right_layout = QHBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+        right_layout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         self._search_palette: SearchPalette | None = None
         self.search_input.setReadOnly(True)
@@ -193,8 +202,9 @@ class TopbarNav(QFrame):
         self.toggle_sidebar_btn.clicked.connect(self.toggleSidebarRequested.emit)
         self.toggle_preview_btn = _icon_btn("\u25A6", "Toggle Preview", size=36)
         self.toggle_preview_btn.clicked.connect(self.togglePreviewRequested.emit)
-        layout.addWidget(self.toggle_sidebar_btn)
-        layout.addWidget(self.toggle_preview_btn)
+        right_layout.addWidget(self.toggle_sidebar_btn)
+        right_layout.addWidget(self.toggle_preview_btn)
+        layout.addWidget(right_container, 1)
 
         self._shortcuts: dict[str, QShortcut] = {}
         self._search_bar = search_bar
@@ -203,9 +213,16 @@ class TopbarNav(QFrame):
     def apply_theme(self) -> None:
         tokens = theme_tokens()
         btn_style = topbar_button_stylesheet(tokens)
-        self.setStyleSheet(shell_stylesheet(tokens))
+        self.setStyleSheet(topbar_stylesheet(tokens))
+        palette = self.palette()
+        palette.setColor(self.backgroundRole(), QColor(tokens.bg_panel))
+        self.setPalette(palette)
         self._search_bar.setStyleSheet(
-            f"#centerSearchBar {{ border: 1px solid {tokens.border}; border-radius: 10px; }}"
+            f"#centerSearchBar {{"
+            f"background-color: {tokens.bg_input};"
+            f"border: 1px solid {tokens.border};"
+            f"border-radius: 10px;"
+            f"}}"
             f"#centerSearchBar:focus-within {{ border: 1px solid {tokens.border}; }}"
         )
         self.search_input.setStyleSheet(search_field_stylesheet(tokens))
@@ -239,6 +256,7 @@ class TopbarNav(QFrame):
     def _build_toolbar_buttons(self, layout: QHBoxLayout):
         self._file_actions: dict[str, QAction | Action] = {}
         self._toolbar_buttons: dict[str, QPushButton] = {}
+        self._menus: dict[str, QMenu | RoundMenu] = {}
 
         btn_container = QFrame()
         btn_container.setObjectName("toolbarButtons")
@@ -250,24 +268,108 @@ class TopbarNav(QFrame):
         for spec in TOPBAR_BUTTONS:
             label = tr(spec.label_key)
             tooltip = self._shortcut_tooltip(label, spec.shortcut)
-            b = _toolbar_btn(label, tooltip)
+            button = _toolbar_btn(label, tooltip)
+            menu = self._build_menu(spec.menu or spec.id)
+            self._menus[spec.id] = menu
+            self._toolbar_buttons[spec.id] = button
             if spec.id == "file":
-                self._file_menu_btn = b
-                if _HAS_FLUENT:
-                    self._file_menu = self._build_file_menu()
-                    b.clicked.connect(self._show_file_menu)
-                else:
-                    self._file_menu = QMenu(b)
-                    self._build_file_menu_qt(self._file_menu)
-                    b.clicked.connect(self._show_file_menu_qt)
-            self._toolbar_buttons[spec.id] = b
-            if spec.action == "settings":
-                b.clicked.connect(self.settingsRequested.emit)
-            elif spec.action == "help":
-                b.clicked.connect(self.helpRequested.emit)
-            btn_layout.addWidget(b)
+                self._file_menu_btn = button
+                self._file_menu = menu
+            button.clicked.connect(lambda checked=False, b=button: self._show_menu_for_button(b))
+            btn_layout.addWidget(button)
 
         layout.addWidget(btn_container)
+
+    def _build_menu(self, menu_id: str) -> QMenu | RoundMenu:
+        if menu_id == "file":
+            return self._build_file_menu() if _HAS_FLUENT else self._build_file_menu_qt_widget()
+        if menu_id == "edit":
+            return self._build_edit_menu() if _HAS_FLUENT else self._build_edit_menu_qt()
+        if menu_id == "view":
+            return self._build_view_menu() if _HAS_FLUENT else self._build_view_menu_qt()
+        if menu_id == "settings":
+            return self._build_settings_menu() if _HAS_FLUENT else self._build_settings_menu_qt()
+        if menu_id == "help":
+            return self._build_help_menu() if _HAS_FLUENT else self._build_help_menu_qt()
+        return self._build_empty_menu_qt()
+
+    def _build_empty_menu_qt(self) -> QMenu:
+        return QMenu(self)
+
+    def _build_file_menu_qt_widget(self) -> QMenu:
+        menu = QMenu(self)
+        self._build_file_menu_qt(menu)
+        return menu
+
+    def _build_edit_menu(self) -> RoundMenu:
+        menu = RoundMenu(parent=self)
+        action = Action(FluentIcon.SEARCH, tr("menu.edit.search"))
+        action.setShortcut(QKeySequence("Ctrl+K"))
+        action.triggered.connect(self._show_search_palette)
+        menu.addAction(action)
+        return menu
+
+    def _build_edit_menu_qt(self) -> QMenu:
+        menu = QMenu(self)
+        action = QAction(tr("menu.edit.search"), menu)
+        action.setShortcut(QKeySequence("Ctrl+K"))
+        action.triggered.connect(self._show_search_palette)
+        menu.addAction(action)
+        return menu
+
+    def _build_view_menu(self) -> RoundMenu:
+        menu = RoundMenu(parent=self)
+        sidebar = Action(FluentIcon.MENU, tr("menu.view.toggle_sidebar"))
+        sidebar.setShortcut(QKeySequence("Ctrl+B"))
+        sidebar.triggered.connect(self.toggleSidebarRequested.emit)
+        preview = Action(FluentIcon.VIEW, tr("menu.view.toggle_preview"))
+        preview.triggered.connect(self.togglePreviewRequested.emit)
+        menu.addAction(sidebar)
+        menu.addAction(preview)
+        return menu
+
+    def _build_view_menu_qt(self) -> QMenu:
+        menu = QMenu(self)
+        sidebar = QAction(tr("menu.view.toggle_sidebar"), menu)
+        sidebar.setShortcut(QKeySequence("Ctrl+B"))
+        sidebar.triggered.connect(self.toggleSidebarRequested.emit)
+        preview = QAction(tr("menu.view.toggle_preview"), menu)
+        preview.triggered.connect(self.togglePreviewRequested.emit)
+        menu.addAction(sidebar)
+        menu.addAction(preview)
+        return menu
+
+    def _build_settings_menu(self) -> RoundMenu:
+        menu = RoundMenu(parent=self)
+        action = Action(FluentIcon.SETTING, tr("menu.settings.open"))
+        action.setShortcut(QKeySequence("Ctrl+,"))
+        action.triggered.connect(self.settingsRequested.emit)
+        menu.addAction(action)
+        return menu
+
+    def _build_settings_menu_qt(self) -> QMenu:
+        menu = QMenu(self)
+        action = QAction(tr("menu.settings.open"), menu)
+        action.setShortcut(QKeySequence("Ctrl+,"))
+        action.triggered.connect(self.settingsRequested.emit)
+        menu.addAction(action)
+        return menu
+
+    def _build_help_menu(self) -> RoundMenu:
+        menu = RoundMenu(parent=self)
+        action = Action(FluentIcon.HELP, tr("menu.help.open"))
+        action.setShortcut(QKeySequence("F1"))
+        action.triggered.connect(self.helpRequested.emit)
+        menu.addAction(action)
+        return menu
+
+    def _build_help_menu_qt(self) -> QMenu:
+        menu = QMenu(self)
+        action = QAction(tr("menu.help.open"), menu)
+        action.setShortcut(QKeySequence("F1"))
+        action.triggered.connect(self.helpRequested.emit)
+        menu.addAction(action)
+        return menu
 
     def _build_file_menu(self) -> RoundMenu:
         menu = RoundMenu(parent=self)
@@ -312,39 +414,33 @@ class TopbarNav(QFrame):
             menu.addAction(action)
             self._file_actions[aid] = action
 
-    def _show_file_menu(self) -> None:
-        if not _HAS_FLUENT or not isinstance(self._file_menu, RoundMenu) or MenuAnimationType is None:
-            self._show_file_menu_qt()
+    def _show_menu_for_button(self, button: QPushButton) -> None:
+        menu = None
+        for spec in TOPBAR_BUTTONS:
+            toolbar_button = self._toolbar_buttons.get(spec.id)
+            if toolbar_button is button:
+                menu = self._menus.get(spec.id)
+                break
+        if menu is None:
             return
-        btn = self._file_menu_btn
-        menu = self._file_menu
-        menu.view.setMinimumWidth(max(btn.width(), 220))
-        menu.view.adjustSize()
-        menu.adjustSize()
-        x = -menu.width() // 2 + menu.layout().contentsMargins().left() + btn.width() // 2
-        pd = btn.mapToGlobal(QPoint(x, btn.height()))
-        pu = btn.mapToGlobal(QPoint(x, 0))
-        hd = menu.view.heightForAnimation(pd, MenuAnimationType.DROP_DOWN)
-        hu = menu.view.heightForAnimation(pu, MenuAnimationType.PULL_UP)
-        if hd >= hu:
-            menu.view.adjustSize(pd, MenuAnimationType.DROP_DOWN)
-            menu.exec(pd, aniType=MenuAnimationType.DROP_DOWN)
-        else:
-            menu.view.adjustSize(pu, MenuAnimationType.PULL_UP)
-            menu.exec(pu, aniType=MenuAnimationType.PULL_UP)
 
-    def _show_file_menu_qt(self) -> None:
-        if not hasattr(self, "_file_menu") or self._file_menu is None:
-            return
-        btn = self._file_menu_btn
-        self._file_menu.popup(btn.mapToGlobal(QPoint(0, btn.height())))
+        pos = button.mapToGlobal(QPoint(0, button.height()))
+        if _HAS_FLUENT and isinstance(menu, RoundMenu):
+            if hasattr(menu, "view"):
+                menu.view.setMinimumWidth(max(button.width(), 200))
+                menu.view.adjustSize()
+            menu.adjustSize()
+        menu.popup(pos)
+
+    def _rebuild_menus(self) -> None:
+        for spec in TOPBAR_BUTTONS:
+            menu_id = spec.menu or spec.id
+            self._menus[spec.id] = self._build_menu(menu_id)
+            if spec.id == "file":
+                self._file_menu = self._menus[spec.id]
 
     def _rebuild_file_menu(self) -> None:
-        if _HAS_FLUENT and isinstance(self._file_menu, RoundMenu):
-            self._file_menu = self._build_file_menu()
-        elif hasattr(self, "_file_menu") and isinstance(self._file_menu, QMenu):
-            self._file_menu.clear()
-            self._build_file_menu_qt(self._file_menu)
+        self._rebuild_menus()
 
     def retranslate_ui(self) -> None:
         self.search_input.setPlaceholderText(tr("search.placeholder"))
@@ -372,7 +468,7 @@ class TopbarNav(QFrame):
     def _show_search_palette(self):
         if self._search_palette is None:
             self._search_palette = SearchPalette(self.window())
-        self._search_palette.show_at_top(self.title_container)
+        self._search_palette.show_at_top(self)
 
     def connect_search_palette(self, main_window: QWidget):
         """Connect search palette pageSelected so clicking a page navigates to it."""

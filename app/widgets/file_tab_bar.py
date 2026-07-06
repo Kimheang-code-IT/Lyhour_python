@@ -209,7 +209,7 @@ class FileTabBar(QFrame):
             self._tab_layout.insertWidget(self._tab_layout.count() - 1, tab)
             self._tabs[entry.session_id] = tab
 
-        self.setVisible(bool(entries))
+        self.setVisible(False)
 
     def set_active(self, session_id: str | None) -> None:
         self._active_session = session_id

@@ -21,6 +21,7 @@ class FileHistoryEntry:
     imported_at: str
     size_bytes: int
     count_hour: str = "12h"
+    file_kind: str = "traffic"
 
     @classmethod
     def from_dict(cls, raw: dict) -> FileHistoryEntry:
@@ -31,7 +32,20 @@ class FileHistoryEntry:
             imported_at=str(raw.get("imported_at", "")),
             size_bytes=int(raw.get("size_bytes", 0)),
             count_hour=str(raw.get("count_hour", "12h")),
+            file_kind=str(raw.get("file_kind", "traffic")),
         )
+
+    @property
+    def is_tld(self) -> bool:
+        return self.file_kind == "tld"
+
+
+def format_recent_import_label(entry: FileHistoryEntry) -> str:
+    from app.core.i18n import tr
+
+    if entry.is_tld:
+        return f"{entry.file_name} ({tr('file.recent.tld')})"
+    return f"{entry.file_name} ({tr('file.recent.traffic')})"
 
 
 def _history_path() -> Path:

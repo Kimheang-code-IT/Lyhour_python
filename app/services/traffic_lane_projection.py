@@ -136,11 +136,8 @@ def build_lane_projection_table(
 
 
 def print_lane_projection_table(projection_rows: list[ProjectionRow]) -> None:
-    """Print the future projection table to stdout."""
-    header = "  ".join(PROJECTION_COLUMNS)
-    print(header)
-    for row in projection_rows:
-        print("  ".join(str(row[column]) for column in PROJECTION_COLUMNS))
+    """Format the future projection table (no stdout output)."""
+    _ = projection_rows
 
 
 def save_lane_projection_chart(

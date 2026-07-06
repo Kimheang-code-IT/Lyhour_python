@@ -30,6 +30,7 @@ from app.core.ui_style import card_title_style, label_style, section_title_style
 from app.widgets.traffic_results import (
     BarChart,
     configure_result_description_note_layout,
+    empty_message_label,
     highlight_result_table_row,
     refresh_theme_widgets,
     result_card,
@@ -45,6 +46,7 @@ from app.services.traffic_esal import (
 from app.services.traffic_tld_excel import read_tld_workbook
 from app.widgets.button import secondary_button
 
+ESAL_TABLE_HEADERS = ["Year", "ESAL", "Traffic Classification"]
 ESAL_LOAD_MODE_STANDARD = "standard_load"
 ESAL_LOAD_MODE_TLD = "tld"
 STANDARD_LANE_OPTIONS = ["1", "2", "3"]
@@ -60,6 +62,10 @@ _ESAL_IMAGE_FILES = {
 _HEADER_ROW_HEIGHT = 34
 _BODY_ROW_WEIGHTS = (1.0, 1.15, 1.35)
 _COLUMN_WEIGHTS = (3.0, 3.5, 1.2, 3.0, 3.5, 1.2)
+_ESAL_TABLE_TEXT = "#000000"
+_ESAL_TABLE_HEADER_BG = "#f2f2f2"
+_ESAL_TABLE_BODY_BG = "#ffffff"
+_ESAL_TABLE_PANEL_BG = "#d8d8dc"
 
 _EMPTY_DESCRIPTION_YEARS = (15, 20, 25)
 
@@ -138,7 +144,7 @@ class DescriptionCell(QLabel):
         padding = UiScale.px_local(8, table_width, reference=900)
         font_pt = UiScale.pt_local(10, table_width, reference=900)
         self.setStyleSheet(
-            f"background-color: {self._background}; color: #111111; "
+            f"background-color: {self._background}; color: {_ESAL_TABLE_TEXT}; "
             f"padding: {padding}px; font-size: {font_pt}pt;"
         )
 
@@ -156,6 +162,7 @@ class EsalAxleTable(QTableWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(4, 6, parent)
+        self.setObjectName("esalAxleTable")
         self.verticalHeader().setVisible(False)
         self.horizontalHeader().setVisible(False)
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -167,42 +174,49 @@ class EsalAxleTable(QTableWidget):
         self.setSizeAdjustPolicy(QTableWidget.SizeAdjustPolicy.AdjustIgnored)
         self.verticalHeader().setMinimumSectionSize(1)
         self.horizontalHeader().setMinimumSectionSize(1)
-        self.setStyleSheet(f"""
-            QTableWidget {{
-                background-color: #d8d8dc;
-                color: #111111;
+        self.apply_table_style()
+        self._populate()
+        self._configure_resize_modes()
+
+    @staticmethod
+    def _table_stylesheet(*, padding_px: int) -> str:
+        return f"""
+            QTableWidget#esalAxleTable {{
+                background-color: {_ESAL_TABLE_PANEL_BG};
+                color: {_ESAL_TABLE_TEXT};
                 border: 1px solid #606060;
                 gridline-color: #606060;
             }}
-            QTableWidget::item {{
-                padding: {UiScale.px(6)}px;
+            QTableWidget#esalAxleTable::item {{
+                color: {_ESAL_TABLE_TEXT};
+                padding: {padding_px}px;
             }}
-        """)
-        self._populate()
-        self._configure_resize_modes()
+        """
+
+    def apply_table_style(self) -> None:
+        padding = UiScale.px_local(6, max(self.viewport().width(), self.width(), 1), reference=900)
+        self.setStyleSheet(self._table_stylesheet(padding_px=padding))
+        black = QBrush(QColor(_ESAL_TABLE_TEXT))
+        for row in range(self.rowCount()):
+            for column in range(self.columnCount()):
+                item = self.item(row, column)
+                if item is not None:
+                    item.setForeground(black)
 
     def apply_ui_scale(self) -> None:
         table_width = max(self.viewport().width(), self.width(), 1)
         padding = UiScale.px_local(6, table_width, reference=900)
-        self.setStyleSheet(f"""
-            QTableWidget {{
-                background-color: #d8d8dc;
-                color: #111111;
-                border: 1px solid #606060;
-                gridline-color: #606060;
-            }}
-            QTableWidget::item {{
-                padding: {padding}px;
-            }}
-        """)
+        self.setStyleSheet(self._table_stylesheet(padding_px=padding))
 
         header_pt = UiScale.pt_local(10, table_width, reference=900)
         number_pt = UiScale.pt_local(11, table_width, reference=900)
+        black = QBrush(QColor(_ESAL_TABLE_TEXT))
         for row in range(self.rowCount()):
             for column in range(self.columnCount()):
                 item = self.item(row, column)
                 if item is None:
                     continue
+                item.setForeground(black)
                 font = item.font()
                 if row == 0:
                     font.setPointSizeF(header_pt)
@@ -229,14 +243,16 @@ class EsalAxleTable(QTableWidget):
             horizontal_header.setSectionResizeMode(column_index, QHeaderView.ResizeMode.Fixed)
 
     def _populate(self) -> None:
-        header_brush = QBrush(QColor("#f2f2f2"))
-        body_brush = QBrush(QColor("#ffffff"))
-        empty_brush = QBrush(QColor("#d8d8dc"))
+        header_brush = QBrush(QColor(_ESAL_TABLE_HEADER_BG))
+        body_brush = QBrush(QColor(_ESAL_TABLE_BODY_BG))
+        empty_brush = QBrush(QColor(_ESAL_TABLE_PANEL_BG))
+        text_brush = QBrush(QColor(_ESAL_TABLE_TEXT))
 
         def set_header(row: int, column: int, text: str) -> None:
             item = QTableWidgetItem(text)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item.setBackground(header_brush)
+            item.setForeground(text_brush)
             font = item.font()
             font.setPointSizeF(UiScale.pt(10))
             font.setBold(True)
@@ -247,6 +263,7 @@ class EsalAxleTable(QTableWidget):
             item = QTableWidgetItem(text)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item.setBackground(body_brush)
+            item.setForeground(text_brush)
             font = item.font()
             font.setPointSizeF(UiScale.pt(11))
             font.setBold(True)
@@ -385,42 +402,57 @@ class EsalPage(QWidget):
         options_layout.setContentsMargins(0, 0, 0, 0)
         options_layout.setSpacing(UiScale.px(20))
 
+        self._radio_group = QWidget()
+        self._radio_group.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        radio_group_layout = QHBoxLayout(self._radio_group)
+        radio_group_layout.setContentsMargins(0, 0, 0, 0)
+        radio_group_layout.setSpacing(UiScale.px(20))
+
         self._standard_load_radio = make_radio("Assume Standard Load", checked=True)
         self._use_tld_radio = make_radio("Use TLD")
         self._load_mode_group = QButtonGroup(self)
         self._load_mode_group.addButton(self._standard_load_radio)
         self._load_mode_group.addButton(self._use_tld_radio)
-        options_layout.addWidget(self._standard_load_radio)
-        options_layout.addWidget(self._use_tld_radio)
+        radio_group_layout.addWidget(self._standard_load_radio)
+        radio_group_layout.addWidget(self._use_tld_radio)
+        options_layout.addWidget(self._radio_group, 0, Qt.AlignmentFlag.AlignLeft)
         options_layout.addStretch(1)
+
+        self._options_controls = QWidget()
+        controls_layout = QHBoxLayout(self._options_controls)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(UiScale.px(12))
 
         self._lane_row = QWidget()
         lane_row_layout = QHBoxLayout(self._lane_row)
         lane_row_layout.setContentsMargins(0, 0, 0, 0)
         lane_row_layout.setSpacing(8)
-        self._lane_label = QLabel("Lane =")
+        self._lane_label = QLabel("Lane each direction =")
         self._lane_combo = make_combo(STANDARD_LANE_OPTIONS)
         lane_row_layout.addWidget(self._lane_label)
         lane_row_layout.addWidget(self._lane_combo)
-        options_layout.addWidget(self._lane_row)
+        controls_layout.addWidget(self._lane_row)
 
         self._tld_row = QWidget()
         tld_row_layout = QHBoxLayout(self._tld_row)
         tld_row_layout.setContentsMargins(0, 0, 0, 0)
         tld_row_layout.setSpacing(8)
-        self._read_tld_btn = secondary_button("Read Excel", min_height=36)
-        self._tld_path_label = QLabel("")
-        self._tld_path_label.setWordWrap(True)
-        self._tld_path_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        tld_row_layout.addWidget(self._tld_path_label)
+        self._read_tld_btn = secondary_button("Read TLD Excel", min_height=36)
         tld_row_layout.addWidget(self._read_tld_btn)
-        options_layout.addWidget(self._tld_row)
+        controls_layout.addWidget(self._tld_row)
         self._tld_row.hide()
+
+        options_layout.addWidget(self._options_controls, 0, Qt.AlignmentFlag.AlignRight)
 
         layout.addWidget(options_row)
 
+        self._tld_notice = empty_message_label("")
+        self._tld_notice.hide()
+        layout.addWidget(self._tld_notice)
+
         self._standard_load_radio.toggled.connect(self._on_load_mode_changed)
         self._lane_combo.currentTextChanged.connect(self._on_lane_changed)
+        self._lane_combo.activated.connect(self._on_lane_changed)
         self._read_tld_btn.clicked.connect(self._on_read_tld_excel)
 
         axle_card = result_card()
@@ -434,6 +466,11 @@ class EsalPage(QWidget):
         self._axle_table = EsalAxleTable()
         self._axle_table.setMinimumHeight(UiScale.px(180))
         axle_layout.addWidget(self._axle_table, 1)
+
+        self._total_esal_day_label = QLabel("")
+        self._total_esal_day_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        axle_layout.addWidget(self._total_esal_day_label)
+
         layout.addWidget(axle_card)
 
         chart_card = result_card()
@@ -466,7 +503,7 @@ class EsalPage(QWidget):
         self._esal_table_slot = QVBoxLayout()
         self._esal_table_slot.setContentsMargins(0, 0, 0, 0)
         self._esal_table = scrollable_result_table(
-            ["Year", "ESAL"],
+            ESAL_TABLE_HEADERS,
             [],
             max_visible_rows=self._ESAL_TABLE_MAX_VISIBLE_ROWS,
         )
@@ -513,18 +550,26 @@ class EsalPage(QWidget):
     def tld_excel_path(self) -> str | None:
         return self._tld_excel_path
 
+    def clear_tld_excel(self) -> None:
+        self._tld_excel_path = None
+        self._tld_notice.hide()
+
+    def restore_tld_import(self, path: str | None) -> None:
+        self._use_tld_radio.setChecked(True)
+        self._tld_excel_path = path
+        self._sync_load_mode_controls()
+
     def _sync_load_mode_controls(self) -> None:
         use_tld = self._use_tld_radio.isChecked()
-        self._lane_row.setVisible(not use_tld)
+        self._lane_row.setVisible(True)
         self._tld_row.setVisible(use_tld)
 
     def _on_load_mode_changed(self, _checked: bool = False) -> None:
         self._sync_load_mode_controls()
         self._request_esal_refresh()
 
-    def _on_lane_changed(self, _text: str = "") -> None:
-        if self.active_esal_load_mode() == ESAL_LOAD_MODE_STANDARD:
-            self._request_esal_refresh()
+    def _on_lane_changed(self, *_args) -> None:
+        self._request_esal_refresh()
 
     def _on_read_tld_excel(self) -> None:
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
@@ -533,9 +578,20 @@ class EsalPage(QWidget):
             self,
             "Read TLD Excel",
             "",
-            "Excel (*.xlsx *.xlsm *.xls);;All Files (*)",
+            "Excel (*.xlsx *.xls);;All Files (*)",
         )
         if not path:
+            return
+
+        mw = self.window()
+        if hasattr(mw, "import_tld_file"):
+            if mw.import_tld_file(path):
+                parsed_text = "TLD axle load distribution was loaded from the workbook."
+                QMessageBox.information(
+                    self,
+                    "Read TLD Excel",
+                    f"Selected Excel file:\n{path}\n\n{parsed_text}",
+                )
             return
 
         try:
@@ -548,28 +604,37 @@ class EsalPage(QWidget):
             )
             return
 
-        self._tld_excel_path = tld_data.get("source_path", path)
-        self._tld_path_label.setText(Path(self._tld_excel_path).name)
+        self.restore_tld_import(tld_data.get("source_path", path))
 
-        mw = self.window()
         if hasattr(mw, "set_tld_excel_data"):
             mw.set_tld_excel_data(tld_data)
 
         parsed_text = (
-            "Axle values were loaded from the workbook."
-            if tld_data.get("has_parsed_values")
-            else "File accepted. ESAL will use session traffic data until axle values are found in the workbook."
+            "TLD axle load distribution was loaded from the workbook."
+            if tld_data.get("has_parsed_distribution") or tld_data.get("has_parsed_loads")
+            else "File accepted, but no TLD distribution rows were found. Check that the sheet contains 'Axle group load' and SAST/SADT/TAST/TADT/TRDT columns."
         )
+        if tld_data.get("parse_errors"):
+            parsed_text += "\n\n" + "\n".join(tld_data["parse_errors"][:3])
         QMessageBox.information(
             self,
             "Read TLD Excel",
-            f"Selected Excel file:\n{self._tld_excel_path}\n\n{parsed_text}",
+            f"Selected Excel file:\n{path}\n\n{parsed_text}",
         )
 
     def _request_esal_refresh(self) -> None:
         mw = self.window()
         if hasattr(mw, "refresh_esal"):
             mw.refresh_esal()
+
+    def _fit_radio_width(self, radio, text: str) -> None:
+        radio.setText(text)
+        radio.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        metrics = radio.fontMetrics()
+        indicator = UiScale.px(22)
+        spacing = UiScale.px(8)
+        padding = UiScale.px(6)
+        radio.setMinimumWidth(indicator + spacing + metrics.horizontalAdvance(text) + padding)
 
     def _apply_options_style(self) -> None:
         option_pt = UiScale.pt(16)
@@ -581,15 +646,12 @@ class EsalPage(QWidget):
         )
         self._standard_load_radio.setStyleSheet(radio_style)
         self._use_tld_radio.setStyleSheet(radio_style)
+        self._fit_radio_width(self._standard_load_radio, "Assume Standard Load")
+        self._fit_radio_width(self._use_tld_radio, "Use TLD")
         label_font = self._lane_label.font()
         label_font.setPointSizeF(option_pt)
         self._lane_label.setFont(label_font)
         self._lane_label.setStyleSheet(label_style(16))
-
-        path_font = self._tld_path_label.font()
-        path_font.setPointSizeF(UiScale.pt(14))
-        self._tld_path_label.setFont(path_font)
-        self._tld_path_label.setStyleSheet(subtitle_style(14))
 
         combo_height = UiScale.px(30)
         self._lane_combo.setMinimumHeight(combo_height)
@@ -604,6 +666,11 @@ class EsalPage(QWidget):
     def refresh_ui_scale(self) -> None:
         self._apply_options_style()
         self._table_title.setStyleSheet(section_title_style(18))
+        total_font = self._total_esal_day_label.font()
+        total_font.setPointSizeF(UiScale.pt(14))
+        total_font.setBold(True)
+        self._total_esal_day_label.setFont(total_font)
+        self._total_esal_day_label.setStyleSheet(subtitle_style(14))
         self._esal_table_title.setStyleSheet(card_title_style(14))
         self._chart_title.setStyleSheet(card_title_style(14))
         self._description_title.setStyleSheet(card_title_style(14))
@@ -613,6 +680,7 @@ class EsalPage(QWidget):
 
     def refresh_theme(self) -> None:
         refresh_theme_widgets(self)
+        self._axle_table.apply_table_style()
         self.refresh_ui_scale()
 
     def set_esal_result(self, result: EsalResult | None) -> None:
@@ -631,13 +699,14 @@ class EsalPage(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._axle_table._fit_table_layout()
+        self._request_esal_refresh()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._axle_table._fit_table_layout()
         self._axle_table.apply_ui_scale()
         panel_width = self._description_panel_width()
-        if self._result is not None and self._result.has_data:
+        if self._result is not None and self._result.has_calculated_esal:
             description = build_design_period_description_html(
                 self._result.design_periods,
                 panel_width=panel_width,
@@ -648,7 +717,9 @@ class EsalPage(QWidget):
 
     def _refresh(self) -> None:
         panel_width = self._description_panel_width()
-        if self._result is not None and self._result.has_data:
+        use_tld = self.active_esal_load_mode() == ESAL_LOAD_MODE_TLD
+
+        if self._result is not None and self._result.has_calculated_esal:
             self._axle_table.update_numbers(self._result.axle_numbers)
             bars = chart_bars_from_esal(self._result)
             esal_table_rows = self._result.esal_table_rows
@@ -657,12 +728,36 @@ class EsalPage(QWidget):
                 self._result.design_periods,
                 panel_width=panel_width,
             )
+            tld_message = self._result.tld_message
         else:
-            self._axle_table.update_numbers(None)
+            self._axle_table.update_numbers(
+                self._result.axle_numbers if self._result is not None else None
+            )
             bars = []
             esal_table_rows = []
             highlight_row = None
             description = _empty_description(panel_width=panel_width)
+            if self._result is not None:
+                tld_message = self._result.tld_message
+            elif use_tld:
+                tld_message = (
+                    "Please upload Austroads TLD Excel to calculate ESAL using axle load distribution."
+                )
+            else:
+                tld_message = None
+
+        if use_tld and tld_message:
+            self._tld_notice.setText(tld_message)
+            self._tld_notice.show()
+        else:
+            self._tld_notice.hide()
+
+        if self._result is not None and self._result.has_calculated_esal:
+            total_day = self._result.total_esal_per_day
+            self._total_esal_day_label.setText(f"Total ESAL/day: {total_day:,.1f}")
+            self._total_esal_day_label.show()
+        else:
+            self._total_esal_day_label.hide()
 
         self._description.setText(description)
 
@@ -678,7 +773,7 @@ class EsalPage(QWidget):
         self._esal_table_slot.removeWidget(self._esal_table)
         self._esal_table.deleteLater()
         self._esal_table = scrollable_result_table(
-            ["Year", "ESAL"],
+            ESAL_TABLE_HEADERS,
             esal_table_rows,
             max_visible_rows=self._ESAL_TABLE_MAX_VISIBLE_ROWS,
         )

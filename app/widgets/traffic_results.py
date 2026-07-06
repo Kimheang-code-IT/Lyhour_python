@@ -103,6 +103,8 @@ def refresh_theme_widgets(root: QWidget) -> None:
         if name in ("resultCard", "resultDescriptionNote", "trafficSectionFrame"):
             frame.setStyleSheet(card_qss)
     for table in root.findChildren(QTableWidget):
+        if table.objectName() == "esalAxleTable":
+            continue
         table.setStyleSheet(table_qss)
     try:
         from app.widgets.traffic_charts import TrafficTotalLineChart, TrafficVehicleGroupPieChart
@@ -145,35 +147,38 @@ def scrollable_result_table(
     table.setHorizontalHeaderLabels(headers)
     table.verticalHeader().setVisible(False)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-    table.setAlternatingRowColors(False)
+    table.setAlternatingRowColors(True)
     table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
     font_pt = UiScale.pt(font_size)
-    table.setStyleSheet(f"""
+    tokens = theme_tokens()
+    alternate = tokens.bg_card_header
+    hover = tokens.hover
+    table.setStyleSheet(
+        _table_style()
+        + f"""
         QTableWidget {{
-            background-color: #2d2d30;
-            color: #ffffff;
-            border: none;
-            gridline-color: #3e3e40;
             font-size: {font_pt}pt;
         }}
         QHeaderView::section {{
-            background-color: #333333;
-            color: #ffffff;
-            border: none;
-            padding: 8px;
-            font-weight: bold;
             font-size: {font_pt}pt;
         }}
         QTableWidget::item {{
-            padding: 8px;
             font-size: {font_pt}pt;
         }}
-    """)
+        QTableWidget::item:alternate {{
+            background-color: {alternate};
+        }}
+        QTableWidget::item:hover {{
+            background-color: {hover};
+        }}
+    """
+    )
 
     for row_index, row in enumerate(rows):
         for col_index, value in enumerate(row):
             item = QTableWidgetItem(value)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             font = item.font()
             font.setPointSizeF(font_pt)
             item.setFont(font)
