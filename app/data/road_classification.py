@@ -1,7 +1,7 @@
 """Road classification (Rural R / Urban U) from projected AADT."""
 from __future__ import annotations
 
-from app.core.result_description_html import (
+from app.utils.result_html import (
     result_highlight_style,
     wrap_result_description_lines,
 )
@@ -79,6 +79,6 @@ def build_road_classification_text(
 
     if projected_aadt and projected_aadt > 0:
         code = road_classification_code(projected_aadt, projected_pcu)
-        lines.append(f"- So, Road classification is {code}")
+        lines.append(f'- So, Road classification is <span style="{highlight}">{code}</span>')
 
     return wrap_result_description_lines(lines)

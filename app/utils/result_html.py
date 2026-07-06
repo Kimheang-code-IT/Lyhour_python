@@ -40,7 +40,7 @@ def result_emphasis_style() -> str:
 def result_highlight_style() -> str:
     font_px = UiScale.px(_BASE_BODY_PX)
     line_px = UiScale.px(_BASE_LINE_HEIGHT_PX)
-    return f"color:#ffffff; font-weight:700; font-size:{font_px}px; line-height:{line_px}px;"
+    return f"color:#4da3ff; font-weight:700; font-size:{font_px}px; line-height:{line_px}px;"
 
 
 def result_title_style() -> str:

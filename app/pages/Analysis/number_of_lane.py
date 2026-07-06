@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from app.core.ui_scale import UiScale
 from app.core.ui_style import section_title_style, subtitle_style
-from app.pages.subpages.common import BarChart, result_card
+from app.widgets.traffic_results import BarChart, refresh_theme_widgets, result_card
 from app.services.traffic_lane_projection import LaneProjectionResult, chart_bars_from_projection
 
 
@@ -44,6 +44,10 @@ class NumberOfLanePage(QWidget):
         self._title.setStyleSheet(section_title_style(18))
         self._subtitle.setStyleSheet(subtitle_style(14))
         self._refresh_chart()
+
+    def refresh_theme(self) -> None:
+        refresh_theme_widgets(self)
+        self.refresh_ui_scale()
 
     def _refresh_chart(self) -> None:
         if self._result is not None and self._result.has_data:

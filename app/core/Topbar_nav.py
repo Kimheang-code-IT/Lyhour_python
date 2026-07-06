@@ -1,4 +1,4 @@
-"""Tab/title bar: menus, search input, toggle sidebar/preview; qtawesome icons when available."""
+"""Tab/title bar: menus, search input, toggle sidebar/preview; Fluent widgets when available."""
 
 from PyQt6.QtWidgets import (
     QWidget,
@@ -9,12 +9,23 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QSizePolicy,
     QGraphicsDropShadowEffect,
+    QMenu,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QShortcut, QKeySequence, QColor, QIcon, QAction
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QPoint
+from PyQt6.QtGui import QShortcut, QKeySequence, QColor, QAction
 
-from app.config.topbar_actions import OTHER_BUTTONS
+from app.core.theme import (
+    kbd_hint_stylesheet,
+    search_field_stylesheet,
+    shell_stylesheet,
+    theme_tokens,
+    topbar_button_stylesheet,
+)
+from app.config.topbar_actions import TOPBAR_BUTTONS
+from app.config.shortcuts import APP_SHORTCUTS
+from app.core.i18n import tr
 from app.core.search import SearchPalette
+from app.services.app_settings import AppSettings
 
 try:
     import qtawesome as qta  # type: ignore[import-untyped]
@@ -24,29 +35,63 @@ except ImportError:
     _HAS_QTAWESOME = False
 
 try:
-    from qfluentwidgets import FluentIcon, Theme  # type: ignore[import-untyped]
-    _HAS_FLUENT_ICON = True
+    from qfluentwidgets import (  # type: ignore[import-untyped]
+        Action,
+        FluentIcon,
+        RoundMenu,
+        Theme,
+        TransparentPushButton,
+        TransparentToolButton,
+    )
+    from qfluentwidgets.components.widgets.menu import MenuAnimationType  # type: ignore[import-untyped]
+    _HAS_FLUENT = True
 except ImportError:
-    _HAS_FLUENT_ICON = False
+    Action = None  # type: ignore[assignment,misc]
+    FluentIcon = None  # type: ignore[assignment,misc]
+    RoundMenu = None  # type: ignore[assignment,misc]
+    Theme = None  # type: ignore[assignment,misc]
+    TransparentPushButton = None  # type: ignore[assignment,misc]
+    TransparentToolButton = None  # type: ignore[assignment,misc]
+    MenuAnimationType = None  # type: ignore[assignment,misc]
+    _HAS_FLUENT = False
 
-_BTN_STYLE = """
-    QPushButton { background-color: transparent; color: #ffffff; font-size: 13px; border: none; border-radius: 4px; outline: none; padding: 4px 10px; }
-    QPushButton:hover { background-color: #3e3e40; color: #ffffff; }
-    QPushButton:pressed { background-color: #505050; color: #ffffff; }
-"""
+_BTN_STYLE = ""
+
+
+def _fluent_theme():
+    if not _HAS_FLUENT:
+        return None
+    from app.core.theme import current_theme
+
+    return Theme.LIGHT if current_theme() == "light" else Theme.DARK
+
+
+def _icon_color() -> str:
+    return theme_tokens().text_primary
 
 
 def _icon_btn(icon: str, tooltip: str, size=32) -> QPushButton:
+    fluent_theme = _fluent_theme()
+    if _HAS_FLUENT and fluent_theme is not None:
+        if icon == "\u2630":
+            btn = TransparentToolButton(FluentIcon.MENU, parent=None)
+        elif icon == "\u25A6":
+            btn = TransparentToolButton(FluentIcon.VIEW, parent=None)
+        else:
+            btn = TransparentToolButton(FluentIcon.MENU, parent=None)
+        btn.setFixedSize(size, 32)
+        btn.setIconSize(QSize(20, 20))
+        btn.setToolTip(tooltip)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        return btn
+
     btn = QPushButton()
+    color = _icon_color()
     try:
         if _HAS_QTAWESOME and qta and icon == "\u2630":
-            btn.setIcon(qta.icon("fa5s.bars", color="#ffffff"))
+            btn.setIcon(qta.icon("fa5s.bars", color=color))
         elif _HAS_QTAWESOME and qta and icon == "\u25A6":
-            btn.setIcon(qta.icon("fa5s.columns", color="#ffffff"))
-        elif _HAS_FLUENT_ICON and icon == "\u2630":
-            btn.setIcon(FluentIcon.MENU.icon(theme=Theme.DARK))
-        elif _HAS_FLUENT_ICON and icon == "\u25A6":
-            btn.setIcon(FluentIcon.VIEW.icon(theme=Theme.DARK))
+            btn.setIcon(qta.icon("fa5s.columns", color=color))
         else:
             btn.setText(icon)
     except Exception:
@@ -62,6 +107,13 @@ def _icon_btn(icon: str, tooltip: str, size=32) -> QPushButton:
 
 
 def _toolbar_btn(text: str, tooltip: str = "") -> QPushButton:
+    if _HAS_FLUENT:
+        btn = TransparentPushButton(text)
+        btn.setMinimumHeight(28)
+        btn.setToolTip(tooltip or text)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        return btn
+
     btn = QPushButton(text)
     btn.setToolTip(tooltip or text)
     btn.setFlat(True)
@@ -76,12 +128,19 @@ class TopbarNav(QFrame):
 
     toggleSidebarRequested = pyqtSignal()
     togglePreviewRequested = pyqtSignal()
+    settingsRequested = pyqtSignal()
+    helpRequested = pyqtSignal()
+    importExcelRequested = pyqtSignal()
+    exportExcelRequested = pyqtSignal()
+    exportPdfRequested = pyqtSignal()
+    recentImportRequested = pyqtSignal(str)
+    recentImportsDialogRequested = pyqtSignal()
+    clearImportHistoryRequested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(36)
         self.setObjectName("titleBar")
-        self.setStyleSheet("#titleBar { background-color: #252526; border: none; border-bottom: 1px solid #3e3e40; border-radius: 0; outline: none; outline-color: transparent; }")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 0, 2, 0)
         layout.setSpacing(0)
@@ -90,7 +149,6 @@ class TopbarNav(QFrame):
 
         self.title_container = QFrame()
         self.title_container.setObjectName("titleContainer")
-        self.title_container.setStyleSheet("#titleContainer { background-color: transparent; margin-right: 100px; min-width: 120px; border: none; outline: none; outline-color: transparent; }")
         self.title_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         title_inner = QHBoxLayout(self.title_container)
         title_inner.setContentsMargins(0, 4, 0, 4)
@@ -100,26 +158,21 @@ class TopbarNav(QFrame):
         search_bar.setFixedHeight(28)
         search_bar.setMinimumWidth(400)
         search_bar.setMaximumWidth(420)
-        search_bar.setStyleSheet("""
-            #centerSearchBar { border: 1px solid #3e3e40; border-radius: 10px; outline: none; outline-color: transparent; }
-            #centerSearchBar:focus-within { border: 1px solid #3e3e40; }
-        """)    
         search_layout = QHBoxLayout(search_bar)
         search_layout.setContentsMargins(10, 0, 10, 0)
         search_layout.setSpacing(6)
         search_icon = QLabel("\u2315")
-        search_icon.setStyleSheet("color: #888; font-size: 14px; background: transparent; border: none;")
+        self._search_icon = search_icon
         search_layout.addWidget(search_icon)
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search...")
+        self.search_input.setPlaceholderText(tr("search.placeholder"))
         self.search_input.setClearButtonEnabled(False)
         self.search_input.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.search_input.setStyleSheet("QLineEdit { background: transparent; color: #cccccc; border: none; padding: 2px 0; font-size: 13px; selection-background-color: #3e3e40; outline: none; outline-color: transparent; } QLineEdit::placeholder { color: #888; }")
         search_layout.addWidget(self.search_input, 1)
-        # Add kbd-style label for Ctrl + K
         kbd_label = QLabel("Ctrl + K")
-        kbd_label.setStyleSheet("QLabel { background: #222; color: #aaa; border-radius: 4px; border: 1px solid #444; font-size: 10px; margin-left: 8px; font-family: 'Consolas', 'monospace'; padding: 0px 5px 0px 5px; min-height: 16px; max-height: 18px; }")
+        kbd_label.setObjectName("searchShortcutHint")
         search_layout.addWidget(kbd_label)
+        self._search_kbd_label = kbd_label
         shadow = QGraphicsDropShadowEffect(search_bar)
         shadow.setBlurRadius(6)
         shadow.setXOffset(0)
@@ -143,9 +196,49 @@ class TopbarNav(QFrame):
         layout.addWidget(self.toggle_sidebar_btn)
         layout.addWidget(self.toggle_preview_btn)
 
+        self._shortcuts: dict[str, QShortcut] = {}
+        self._search_bar = search_bar
+        self.apply_theme()
+
+    def apply_theme(self) -> None:
+        tokens = theme_tokens()
+        btn_style = topbar_button_stylesheet(tokens)
+        self.setStyleSheet(shell_stylesheet(tokens))
+        self._search_bar.setStyleSheet(
+            f"#centerSearchBar {{ border: 1px solid {tokens.border}; border-radius: 10px; }}"
+            f"#centerSearchBar:focus-within {{ border: 1px solid {tokens.border}; }}"
+        )
+        self.search_input.setStyleSheet(search_field_stylesheet(tokens))
+        self._search_kbd_label.setStyleSheet(kbd_hint_stylesheet(tokens))
+        self._search_icon.setStyleSheet(
+            f"color: {tokens.text_muted}; font-size: 14px; background: transparent; border: none;"
+        )
+        for btn in self._toolbar_buttons.values():
+            if not _HAS_FLUENT:
+                btn.setStyleSheet(btn_style)
+        if not _HAS_FLUENT:
+            self.toggle_sidebar_btn.setStyleSheet(btn_style)
+            self.toggle_preview_btn.setStyleSheet(btn_style)
+        color = tokens.text_primary
+        fluent_theme = _fluent_theme()
+        if not _HAS_FLUENT:
+            try:
+                if _HAS_QTAWESOME and qta:
+                    self.toggle_sidebar_btn.setIcon(qta.icon("fa5s.bars", color=color))
+                    self.toggle_preview_btn.setIcon(qta.icon("fa5s.columns", color=color))
+            except Exception:
+                pass
+        if self._search_palette is not None:
+            self._search_palette.apply_theme()
+
+    def _shortcut_tooltip(self, label: str, shortcut: str | None) -> str:
+        if not shortcut or not AppSettings.current().show_shortcut_hints:
+            return label
+        return f"{label} ({shortcut})"
+
     def _build_toolbar_buttons(self, layout: QHBoxLayout):
-        self._file_actions: dict[str, QAction] = {}
-        
+        self._file_actions: dict[str, QAction | Action] = {}
+        self._toolbar_buttons: dict[str, QPushButton] = {}
 
         btn_container = QFrame()
         btn_container.setObjectName("toolbarButtons")
@@ -154,17 +247,127 @@ class TopbarNav(QFrame):
         btn_layout.setContentsMargins(0, 0, 8, 0)
         btn_layout.setSpacing(2)
 
-        def add_btn(action: QAction):
-            b = _toolbar_btn(action.text(), action.toolTip())
-            b.clicked.connect(action.trigger)
-            btn_layout.addWidget(b)
-
-
-        for name in OTHER_BUTTONS:
-            b = _toolbar_btn(name, f"{name} placeholder")
+        for spec in TOPBAR_BUTTONS:
+            label = tr(spec.label_key)
+            tooltip = self._shortcut_tooltip(label, spec.shortcut)
+            b = _toolbar_btn(label, tooltip)
+            if spec.id == "file":
+                self._file_menu_btn = b
+                if _HAS_FLUENT:
+                    self._file_menu = self._build_file_menu()
+                    b.clicked.connect(self._show_file_menu)
+                else:
+                    self._file_menu = QMenu(b)
+                    self._build_file_menu_qt(self._file_menu)
+                    b.clicked.connect(self._show_file_menu_qt)
+            self._toolbar_buttons[spec.id] = b
+            if spec.action == "settings":
+                b.clicked.connect(self.settingsRequested.emit)
+            elif spec.action == "help":
+                b.clicked.connect(self.helpRequested.emit)
             btn_layout.addWidget(b)
 
         layout.addWidget(btn_container)
+
+    def _build_file_menu(self) -> RoundMenu:
+        menu = RoundMenu(parent=self)
+        self._file_actions.clear()
+        items = [
+            ("import_excel", FluentIcon.FOLDER_ADD, tr("menu.file.import_excel"), self.importExcelRequested.emit),
+            ("export_excel", FluentIcon.DOCUMENT, tr("menu.file.export_excel"), self.exportExcelRequested.emit),
+            ("export_pdf", FluentIcon.DOCUMENT, tr("menu.file.export_pdf"), self.exportPdfRequested.emit),
+            None,
+            ("recent", FluentIcon.HISTORY, tr("menu.file.recent"), self.recentImportsDialogRequested.emit),
+            ("clear_history", FluentIcon.DELETE, tr("menu.file.clear_history"), self.clearImportHistoryRequested.emit),
+        ]
+        for item in items:
+            if item is None:
+                menu.addSeparator()
+                continue
+            aid, icon, text, handler = item
+            action = Action(icon, text)
+            action.triggered.connect(handler)
+            menu.addAction(action)
+            self._file_actions[aid] = action
+        return menu
+
+    def _build_file_menu_qt(self, menu: QMenu) -> None:
+        self._file_actions.clear()
+        items = [
+            ("import_excel", tr("menu.file.import_excel"), self.importExcelRequested.emit),
+            ("export_excel", tr("menu.file.export_excel"), self.exportExcelRequested.emit),
+            ("export_pdf", tr("menu.file.export_pdf"), self.exportPdfRequested.emit),
+            None,
+            ("recent", tr("menu.file.recent"), self.recentImportsDialogRequested.emit),
+            ("clear_history", tr("menu.file.clear_history"), self.clearImportHistoryRequested.emit),
+        ]
+        for item in items:
+            if item is None:
+                menu.addSeparator()
+                continue
+            aid, text, handler = item
+            action = QAction(text, menu)
+            if handler is not None:
+                action.triggered.connect(handler)
+            menu.addAction(action)
+            self._file_actions[aid] = action
+
+    def _show_file_menu(self) -> None:
+        if not _HAS_FLUENT or not isinstance(self._file_menu, RoundMenu) or MenuAnimationType is None:
+            self._show_file_menu_qt()
+            return
+        btn = self._file_menu_btn
+        menu = self._file_menu
+        menu.view.setMinimumWidth(max(btn.width(), 220))
+        menu.view.adjustSize()
+        menu.adjustSize()
+        x = -menu.width() // 2 + menu.layout().contentsMargins().left() + btn.width() // 2
+        pd = btn.mapToGlobal(QPoint(x, btn.height()))
+        pu = btn.mapToGlobal(QPoint(x, 0))
+        hd = menu.view.heightForAnimation(pd, MenuAnimationType.DROP_DOWN)
+        hu = menu.view.heightForAnimation(pu, MenuAnimationType.PULL_UP)
+        if hd >= hu:
+            menu.view.adjustSize(pd, MenuAnimationType.DROP_DOWN)
+            menu.exec(pd, aniType=MenuAnimationType.DROP_DOWN)
+        else:
+            menu.view.adjustSize(pu, MenuAnimationType.PULL_UP)
+            menu.exec(pu, aniType=MenuAnimationType.PULL_UP)
+
+    def _show_file_menu_qt(self) -> None:
+        if not hasattr(self, "_file_menu") or self._file_menu is None:
+            return
+        btn = self._file_menu_btn
+        self._file_menu.popup(btn.mapToGlobal(QPoint(0, btn.height())))
+
+    def _rebuild_file_menu(self) -> None:
+        if _HAS_FLUENT and isinstance(self._file_menu, RoundMenu):
+            self._file_menu = self._build_file_menu()
+        elif hasattr(self, "_file_menu") and isinstance(self._file_menu, QMenu):
+            self._file_menu.clear()
+            self._build_file_menu_qt(self._file_menu)
+
+    def retranslate_ui(self) -> None:
+        self.search_input.setPlaceholderText(tr("search.placeholder"))
+        self.apply_shortcut_settings()
+        for spec in TOPBAR_BUTTONS:
+            btn = self._toolbar_buttons.get(spec.id)
+            if btn is None:
+                continue
+            label = tr(spec.label_key)
+            btn.setText(label)
+            btn.setToolTip(self._shortcut_tooltip(label, spec.shortcut))
+        self.toggle_sidebar_btn.setToolTip(
+            self._shortcut_tooltip(tr("shortcuts.toggle_sidebar"), "Ctrl+B")
+        )
+        self._rebuild_file_menu()
+
+    def apply_shortcut_settings(self) -> None:
+        prefs = AppSettings.current()
+        disabled = set(prefs.disabled_shortcuts)
+        for shortcut_id, shortcut in self._shortcuts.items():
+            shortcut.setEnabled(shortcut_id not in disabled)
+        if hasattr(self, "_search_kbd_label"):
+            self._search_kbd_label.setVisible(prefs.show_shortcut_hints)
 
     def _show_search_palette(self):
         if self._search_palette is None:
@@ -186,18 +389,27 @@ class TopbarNav(QFrame):
         pass
 
     def connect_file_actions(self, main_window):
-        _id_to_method = {
-            "new": "new_document",
-            "open": "open_document",
-            "save": "save_document",
-            "save_as": "save_document_as",
-            "export_pdf": "export_pdf",
-            "exit": "close",
-        }
-        for aid, method_name in _id_to_method.items():
-            if aid in self._file_actions and hasattr(main_window, method_name):
-                self._file_actions[aid].triggered.connect(getattr(main_window, method_name))
+        self.importExcelRequested.connect(main_window.import_excel_dialog)
+        self.exportExcelRequested.connect(main_window.export_excel_summary_dialog)
+        self.exportPdfRequested.connect(main_window.export_pdf)
+        self.recentImportsDialogRequested.connect(main_window.open_recent_imports_dialog)
+        self.recentImportRequested.connect(main_window.activate_excel_session)
+        self.clearImportHistoryRequested.connect(main_window.clear_excel_history)
 
     def connect_shortcuts(self, main_window):
-        QShortcut(QKeySequence("Ctrl+K"), main_window, self._show_search_palette)
-        QShortcut(QKeySequence("Ctrl+B"), main_window, main_window.toggle_sidebar)
+        self._shortcuts.clear()
+        handlers = {
+            "search": self._show_search_palette,
+            "toggle_sidebar": main_window.toggle_sidebar,
+            "settings": main_window.open_settings_dialog,
+            "help": main_window.open_help_dialog,
+        }
+        for spec in APP_SHORTCUTS:
+            if not spec.toggleable:
+                continue
+            handler = handlers.get(spec.id)
+            if handler is None:
+                continue
+            shortcut = QShortcut(QKeySequence(spec.sequence), main_window, handler)
+            self._shortcuts[spec.id] = shortcut
+        self.apply_shortcut_settings()

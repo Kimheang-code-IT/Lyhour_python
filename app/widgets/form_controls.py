@@ -1,7 +1,7 @@
 """Reusable form control factories with Fluent fallbacks."""
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDoubleValidator, QIntValidator
-from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLineEdit, QSpinBox
+from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLineEdit, QRadioButton, QSpinBox
 
 try:
     from qfluentwidgets import (
@@ -9,6 +9,8 @@ try:
         DoubleSpinBox as FluentDoubleSpinBox,
         EditableComboBox as FluentEditableComboBox,
         LineEdit as FluentLineEdit,
+        RadioButton as FluentRadioButton,
+        SwitchButton as FluentSwitchButton,
     )
     _HAS_FLUENT = True
 except Exception:
@@ -16,6 +18,8 @@ except Exception:
     FluentDoubleSpinBox = None  # type: ignore[assignment]
     FluentEditableComboBox = None  # type: ignore[assignment]
     FluentLineEdit = None  # type: ignore[assignment]
+    FluentRadioButton = None  # type: ignore[assignment]
+    FluentSwitchButton = None  # type: ignore[assignment]
     _HAS_FLUENT = False
 
 
@@ -56,6 +60,51 @@ def make_combo(items, *, editable: bool = False):
 
     combo.addItems(list(items))
     return combo
+
+
+def make_data_combo(options: list[tuple[str, object]]):
+    """Fluent combo with ``(label, value)`` pairs — same style as Traffic Input selects."""
+    combo = make_combo([label for label, _ in options])
+    for index, (_, value) in enumerate(options):
+        combo.setItemData(index, value)
+    return combo
+
+
+def combo_current_data(combo) -> object:
+    index = combo.currentIndex()
+    if index < 0:
+        return None
+    data = combo.itemData(index)
+    return data if data is not None else combo.currentText()
+
+
+def set_combo_data(combo, value) -> None:
+    for index in range(combo.count()):
+        if combo.itemData(index) == value:
+            combo.setCurrentIndex(index)
+            return
+
+
+def make_switch(*, checked: bool = False):
+    """On/off toggle using Fluent ``SwitchButton`` when available."""
+    if _HAS_FLUENT and FluentSwitchButton is not None:
+        widget = FluentSwitchButton()
+    else:
+        from PyQt6.QtWidgets import QCheckBox
+
+        widget = QCheckBox()
+    widget.setChecked(checked)
+    return widget
+
+
+def make_radio(text: str = "", *, checked: bool = False) -> QRadioButton:
+    """Radio control using Fluent ``RadioButton`` when available."""
+    if _HAS_FLUENT and FluentRadioButton is not None:
+        widget = FluentRadioButton(text)
+    else:
+        widget = QRadioButton(text)
+    widget.setChecked(checked)
+    return widget
 
 
 def _make_line_edit() -> QLineEdit:

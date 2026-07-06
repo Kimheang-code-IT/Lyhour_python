@@ -13,6 +13,7 @@ from PyQt6.QtGui import QIcon
 from app.core.main_window import MainWindow
 from app.core.app import setup_theme
 from app.config.settings import APP_NAME, APP_DISPLAY_NAME
+from app.services.app_settings import AppSettings
 
 try:
     from loguru import logger
@@ -39,16 +40,14 @@ def main():
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_DISPLAY_NAME)
 
+    AppSettings.instance().load()
+
     # Use KIEC_logo.png (or Logo.ico) for taskbar and window icon
     logo_path = _app_icon_path()
     if logo_path is not None:
         app.setWindowIcon(QIcon(str(logo_path)))
 
     setup_theme(app)
-
-    from app.core.theme import get_palette, get_stylesheet
-    app.setPalette(get_palette())
-    app.setStyleSheet(get_stylesheet())
 
     window = MainWindow()
     if logo_path is not None:

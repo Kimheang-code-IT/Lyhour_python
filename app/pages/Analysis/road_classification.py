@@ -2,13 +2,14 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from app.core.result_description_html import result_title_style
+from app.utils.result_html import result_title_style
 from app.data.road_classification import build_road_classification_text
-from app.pages.subpages.common import (
+from app.widgets.traffic_results import (
     configure_result_description_note_layout,
     result_card,
     result_description_label,
     result_description_note,
+    refresh_theme_widgets,
 )
 
 
@@ -53,6 +54,10 @@ class RoadClassificationPage(QWidget):
         self._total_aadt = total_aadt
         self._total_pcu = total_pcu
         self._apply_description()
+
+    def refresh_theme(self) -> None:
+        refresh_theme_widgets(self)
+        self.refresh_ui_scale()
 
     def _apply_description(self) -> None:
         self._description.setText(

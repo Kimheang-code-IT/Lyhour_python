@@ -39,7 +39,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtCore import Qt
 
-from app.core.components.form_controls import make_combo, make_double_spin
+from app.widgets.form_controls import make_combo, make_double_spin
 
 
 try:

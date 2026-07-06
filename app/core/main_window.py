@@ -15,16 +15,29 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QLabel,
+    QApplication,
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QCloseEvent, QFont
 
 from app.core.Sidebar_left import SidebarLeft
 from app.core.Topbar_nav import TopbarNav
 from app.core.preview_panel import PreviewPanel
 from app.core.quick_panel import QuickPanel
 from app.core.ui_scale import UiScale
-from app.core.theme import apply_drop_shadow
+from app.core.theme import apply_drop_shadow, apply_theme_to_app, shell_stylesheet, theme_tokens
+from app.core.i18n import tr
+from app.services.app_settings import AppSettings, AppSettingsData
+from app.widgets.settings_dialog import SettingsDialog
+from app.widgets.loading_overlay import LoadingOverlay
+from app.widgets.dialog import info
 from app.services.pdf_export import export_pdf
+from app.services.excel_io import ExcelIOService
+from app.services.file_history import FileHistoryStore
+from app.services.excel_session import ExcelSessionCache
+from app.widgets.file_tab_bar import FileTabBar
+from app.widgets.recent_imports_dialog import pick_recent_import
+from loguru import logger
 from app.services.traffic_excel import (
     build_summary_total_row,
     filter_traffic_count_rows,
@@ -46,10 +59,18 @@ from app.services.traffic_esal import EsalResult, compute_esal_from_workbook_dat
 from app.services.traffic_quick_results import build_traffic_quick_results
 from app.config.settings import APP_NAME, APP_DISPLAY_NAME, PROJECT_EXTENSION, PROJECT_FILTER
 
-# Page order: 0=Input, 1=Detail Result, 2=Horizontal Curvature, 3=Superelevation Design
+from app.core.page_registry import (
+    FIXED_RIGHT_PANEL_PAGES,
+    RGD_HORIZONTAL_CURVATURE,
+    TRAFFIC_ANALYSIS,
+    TRAFFIC_INPUT,
+    TRAFFIC_PAGES,
+    build_page_factories,
+)
+
 _PAGE_FACTORIES: list[Callable[[QWidget], QWidget]] = []
-_PAGES_WITHOUT_PREVIEW = {0, 1}
-_PAGES_WITH_FIXED_RIGHT_PANEL = {2, 3}
+_PAGES_WITHOUT_PREVIEW = TRAFFIC_PAGES
+_PAGES_WITH_FIXED_RIGHT_PANEL = FIXED_RIGHT_PANEL_PAGES
 _RIGHT_PANEL_MIN_WIDTH = 400
 _RIGHT_PANEL_MAX_WIDTH = 430
 _RIGHT_PANEL_DEFAULT_MAX_WIDTH = 16777215
@@ -58,16 +79,7 @@ _RIGHT_PANEL_DEFAULT_MAX_WIDTH = 16777215
 def _register_pages() -> None:
     if _PAGE_FACTORIES:
         return
-    from app.pages.Traffic_Analysis_input import TrafficAnalysisInputPage
-    from app.pages.Traffic_Analysis_Detail_Result import TrafficAnalysisDetailResultPage
-    from app.pages.RGD_Horizontal_Curvature import RGDHorizontalCurvaturePage
-    from app.pages.RGD_Superelevation_Design import RGDSuperelevationDesignPage
-    _PAGE_FACTORIES.extend([
-        lambda p: TrafficAnalysisInputPage(p),
-        lambda p: TrafficAnalysisDetailResultPage(p),
-        lambda p: RGDHorizontalCurvaturePage(p),
-        lambda p: RGDSuperelevationDesignPage(p),
-    ])
+    _PAGE_FACTORIES.extend(build_page_factories())
 
 
 def _placeholder_page(title: str, description: str, parent: QWidget) -> QWidget:
@@ -87,6 +99,8 @@ def _placeholder_page(title: str, description: str, parent: QWidget) -> QWidget:
 class MainWindow(QMainWindow):
     """Main window with 3-column layout: Sidebar_left, stack, preview_panel. Pages lazy-loaded."""
 
+    settingsApplyFinished = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_DISPLAY_NAME)
@@ -103,6 +117,10 @@ class MainWindow(QMainWindow):
         self.title_bar.connect_window(self)
         root_layout.addWidget(self.title_bar)
 
+        self.file_tab_bar = FileTabBar(self)
+        self.file_tab_bar.hide()
+        root_layout.addWidget(self.file_tab_bar)
+
         content = QWidget()
         content_layout = QHBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
@@ -111,7 +129,6 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setHandleWidth(6)
-        self.splitter.setStyleSheet("QSplitter::handle { background-color: #3e3e40; width: 6px; }")
 
         self.nav = SidebarLeft(self)
         self.nav.setMinimumWidth(120)
@@ -119,7 +136,6 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.stack.setObjectName("centerStack")
-        self.stack.setStyleSheet("#centerStack { background-color: #2d2d30; }")
         self.stack.setMinimumWidth(200)
 
         _register_pages()
@@ -137,7 +153,7 @@ class MainWindow(QMainWindow):
         self.quick_panel.hide()
         self.splitter.addWidget(self.quick_panel)
 
-        self.splitter.setSizes([240, 480, 480, 320])
+        self.splitter.setSizes([250, 510, 480, 280])
 
         apply_drop_shadow(self.nav)
         apply_drop_shadow(self.preview_panel)
@@ -146,8 +162,15 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.splitter)
         root_layout.addWidget(content, 1)
 
+        self._content = content
+        self._settings_busy_overlay = LoadingOverlay(content)
+        self._settings_applying = False
+
         self.calc_state = {"inputs": {}, "results": {}}
         self.current_file_path: str | None = None
+        self._active_excel_session: str | None = None
+        self._open_excel_sessions: list[str] = []
+        self._excel_io = ExcelIOService.instance()
         self._pending_road_classification: tuple[str | None, int | None, int | None] = (
             None,
             None,
@@ -158,25 +181,255 @@ class MainWindow(QMainWindow):
         self._pending_aadt_pcu_result: AadtPcuResult | None = None
 
         self.title_bar.connect_file_actions(self)
+        self.file_tab_bar.tabActivated.connect(self.activate_excel_session)
+        self.file_tab_bar.tabClosed.connect(self.close_excel_session)
+        self.file_tab_bar.importRequested.connect(self.import_excel_dialog)
         self.title_bar.toggleSidebarRequested.connect(self.toggle_sidebar)
         self.title_bar.togglePreviewRequested.connect(self.toggle_preview)
+        self.title_bar.settingsRequested.connect(self.open_settings_dialog)
+        self.title_bar.helpRequested.connect(self.open_help_dialog)
         self.nav.toggleRequested.connect(self.toggle_sidebar)
         self.title_bar.connect_shortcuts(self)
         self.title_bar.connect_search_palette(self)
         self.nav.pageChanged.connect(self._on_page_changed)
-        self.nav.set_current_index(0)
-        self._sidebar_visible = True
-        self._preview_visible = True
+        AppSettings.instance().changed.connect(self._on_settings_changed)
         self._quick_panel_visible = False
+        self._apply_saved_settings(apply_workspace=True)
+        self.nav.set_current_index(0)
         self._update_window_title()
 
         self._ensure_page(0)
         self.stack.setCurrentIndex(0)
         self._apply_preview_visibility(0)
+        self._activate_page(0)
         QTimer.singleShot(0, self.refresh_road_classification)
         QTimer.singleShot(0, self.refresh_traffic_quick_results)
         self.splitter.splitterMoved.connect(lambda *_args: self._maybe_refresh_ui_scale())
         QTimer.singleShot(0, self._maybe_refresh_ui_scale)
+        self.refresh_file_tabs()
+
+    def refresh_file_tabs(self) -> None:
+        history = FileHistoryStore.instance()
+        open_entries = []
+        for session_id in self._open_excel_sessions:
+            entry = history.get(session_id)
+            if entry is not None:
+                open_entries.append(entry)
+        self.file_tab_bar.set_tabs(open_entries, active_session_id=self._active_excel_session)
+
+    def open_recent_imports_dialog(self) -> None:
+        session_id = pick_recent_import(self, FileHistoryStore.instance().entries)
+        if session_id:
+            self.activate_excel_session(session_id)
+
+    def _open_excel_tab(self, session_id: str) -> None:
+        if session_id in self._open_excel_sessions:
+            self._open_excel_sessions.remove(session_id)
+        self._open_excel_sessions.insert(0, session_id)
+
+    def _active_count_hour(self) -> str:
+        traffic_state = self.calc_state.get("traffic_analysis") or {}
+        return str(traffic_state.get("traffic_count_hour") or "12h")
+
+    def import_excel_dialog(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("menu.file.import_excel"),
+            "",
+            ExcelIOService.excel_filter(),
+        )
+        if path:
+            self.import_excel_file(path)
+
+    def import_excel_file(self, path: str, *, count_hour: str | None = None) -> bool:
+        try:
+            result = self._excel_io.import_traffic_workbook(
+                path,
+                count_hour=count_hour or self._active_count_hour(),
+            )
+        except Exception as exc:
+            logger.exception("Excel import failed")
+            QMessageBox.warning(self, tr("menu.file.import_excel"), f"{tr('file.import.failed')}\n{exc}")
+            return False
+
+        data = self._excel_io.load_session(result.session_id)
+        if not data:
+            QMessageBox.warning(self, tr("menu.file.import_excel"), tr("file.import.failed"))
+            return False
+
+        self._active_excel_session = result.session_id
+        self._open_excel_tab(result.session_id)
+        self.set_traffic_excel_data(data)
+        self.refresh_file_tabs()
+        self._navigate_to_traffic_input()
+        self.statusBar().showMessage(tr("file.import.ok").format(name=result.file_name), 5000)
+        return True
+
+    def activate_excel_session(self, session_id: str) -> None:
+        data = self._excel_io.load_session(session_id)
+        if not data:
+            QMessageBox.information(self, tr("menu.file.import_excel"), tr("file.session.missing"))
+            self.close_excel_session(session_id)
+            return
+        effective_id = str(data.get("session_id") or session_id)
+        if effective_id != session_id and session_id in self._open_excel_sessions:
+            self._open_excel_sessions.remove(session_id)
+        self._active_excel_session = effective_id
+        self._open_excel_tab(effective_id)
+        self.set_traffic_excel_data(data)
+        self.refresh_file_tabs()
+        self._navigate_to_traffic_input()
+
+    def close_excel_session(self, session_id: str) -> None:
+        self._excel_io.close_session(session_id)
+        if session_id in self._open_excel_sessions:
+            self._open_excel_sessions.remove(session_id)
+        if self._active_excel_session == session_id:
+            self._active_excel_session = None
+            traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+            traffic_state.clear()
+            self._apply_traffic_summary([], None)
+            self.refresh_lane_projection()
+            self.refresh_esal()
+        self.refresh_file_tabs()
+
+    def clear_excel_history(self) -> None:
+        FileHistoryStore.instance().clear()
+        ExcelSessionCache.instance().clear()
+        self._active_excel_session = None
+        self._open_excel_sessions.clear()
+        self.refresh_file_tabs()
+
+    def export_excel_summary_dialog(self) -> None:
+        traffic_state = self.calc_state.get("traffic_analysis") or {}
+        rows = traffic_state.get("traffic_count_rows") or []
+        summary = traffic_state.get("summary_total_row")
+        if not rows and not summary:
+            QMessageBox.information(self, tr("menu.file.export_excel"), tr("file.session.missing"))
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            tr("menu.file.export_excel"),
+            "",
+            ExcelIOService.excel_filter(),
+        )
+        if not path:
+            return
+        try:
+            out = self._excel_io.export_traffic_summary(
+                path,
+                traffic_count_rows=rows,
+                summary_total_row=summary,
+            )
+            self.statusBar().showMessage(tr("file.export.excel.ok").format(path=out.name), 5000)
+        except Exception as exc:
+            QMessageBox.warning(self, tr("menu.file.export_excel"), str(exc))
+
+    def _navigate_to_traffic_input(self) -> None:
+        from app.core.page_registry import TRAFFIC_INPUT
+
+        self._on_page_changed(TRAFFIC_INPUT)
+        self.nav.set_current_index(TRAFFIC_INPUT)
+
+    def _apply_saved_settings(self, *, apply_workspace: bool = False) -> None:
+        prefs = AppSettings.current()
+        self._sidebar_visible = prefs.sidebar_visible
+        self._preview_visible = prefs.preview_visible
+
+        UiScale.set_user_font_scale(prefs.font_scale)
+        UiScale.set_compact_mode(prefs.compact_mode)
+
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme_to_app(app, theme=prefs.theme, accent=prefs.accent_color)
+
+        self._apply_app_font(prefs.language)
+
+        if apply_workspace:
+            self.nav.setVisible(self._sidebar_visible)
+            self._apply_preview_visibility()
+
+        QTimer.singleShot(0, self._retranslate_shell_ui)
+        self._apply_shell_theme()
+        self._refresh_ui_scale_all_pages()
+
+    def _apply_shell_theme(self) -> None:
+        tokens = theme_tokens()
+        self.splitter.setStyleSheet(
+            f"QSplitter::handle {{ background-color: {tokens.splitter_handle}; width: 6px; }}"
+        )
+        self.stack.setStyleSheet(shell_stylesheet(tokens))
+        self.title_bar.apply_theme()
+        self.nav.apply_theme()
+        self.preview_panel.apply_theme()
+        self.quick_panel.apply_theme()
+        palette = self.title_bar._search_palette
+        if palette is not None:
+            palette.apply_theme()
+        if hasattr(self, "file_tab_bar"):
+            self.file_tab_bar.apply_theme()
+
+    def _retranslate_shell_ui(self) -> None:
+        self._apply_shell_theme()
+        self.title_bar.retranslate_ui()
+        if hasattr(self.nav, "retranslate_ui"):
+            self.nav.retranslate_ui()
+        palette = self.title_bar._search_palette
+        if palette is not None:
+            palette.retranslate_ui()
+        self.title_bar.apply_shortcut_settings()
+        self.refresh_file_tabs()
+
+    def _apply_app_font(self, language: str) -> None:
+        app = QApplication.instance()
+        if app is None:
+            return
+        font = QFont(app.font())
+        if language == "km":
+            font.setFamilies(["Khmer OS", "Khmer OS System", "Leelawadee UI", "Segoe UI"])
+        else:
+            font.setFamilies(["Segoe UI", "Arial", "sans-serif"])
+        app.setFont(font)
+
+    def _on_settings_changed(self, _prefs: AppSettingsData) -> None:
+        if self._settings_applying:
+            return
+        self._settings_applying = True
+        self._settings_busy_overlay.show_busy(tr("settings.applying"))
+        QApplication.processEvents()
+        QTimer.singleShot(0, self._finish_settings_apply)
+
+    def _finish_settings_apply(self) -> None:
+        try:
+            self._apply_saved_settings(apply_workspace=True)
+            self.statusBar().showMessage(tr("settings.apply.ok"), 4000)
+        finally:
+            self._settings_busy_overlay.hide_busy()
+            self._settings_applying = False
+            self.settingsApplyFinished.emit()
+
+    def open_settings_dialog(self) -> None:
+        dialog = SettingsDialog(self)
+        dialog.exec()
+
+    def open_help_dialog(self) -> None:
+        info(self, tr("help.title"), tr("help.body"))
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        prefs = AppSettings.current()
+        if prefs.confirm_exit:
+            box = QMessageBox(self)
+            box.setWindowTitle(APP_DISPLAY_NAME)
+            box.setText(tr("settings.confirm_exit.message"))
+            box.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            box.setDefaultButton(QMessageBox.StandardButton.No)
+            if box.exec() != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+        ExcelSessionCache.instance().clear()
+        super().closeEvent(event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -191,13 +444,44 @@ class MainWindow(QMainWindow):
         for page in self._page_widgets:
             if page is not None and hasattr(page, "refresh_ui_scale"):
                 page.refresh_ui_scale()
+            if page is not None and hasattr(page, "refresh_theme"):
+                page.refresh_theme()
 
-    def _on_page_changed(self, index: int):
+    def _on_page_changed(self, index: int) -> None:
+        if index < 0 or index >= len(_PAGE_FACTORIES):
+            return
         self._ensure_page(index)
         self.stack.setCurrentIndex(index)
         if index not in _PAGES_WITHOUT_PREVIEW:
             self._quick_panel_visible = False
         self._apply_preview_visibility(index)
+        self.nav.set_current_index(index)
+        self._activate_page(index)
+
+    def _activate_page(self, index: int) -> None:
+        """Refresh page data and side panels when a menu item is opened."""
+        page = self._page_widgets[index]
+        if page is None:
+            return
+
+        if index == TRAFFIC_INPUT:
+            self.refresh_traffic_quick_results()
+        elif index == TRAFFIC_ANALYSIS:
+            self._refresh_traffic_analysis_views()
+        elif hasattr(page, "activate_page"):
+            page.activate_page()
+
+    def _refresh_traffic_analysis_views(self) -> None:
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        self._apply_traffic_summary(
+            traffic_state.get("traffic_count_rows", []),
+            traffic_state.get("summary_total_row"),
+        )
+        self._apply_pending_road_classification()
+        self._apply_pending_lane_projection()
+        self._apply_pending_esal_result()
+        self._apply_pending_aadt_pcu_result()
+        self.refresh_traffic_quick_results()
 
     def _apply_preview_visibility(self, index: int | None = None) -> None:
         if index is None:
@@ -222,25 +506,22 @@ class MainWindow(QMainWindow):
         if self._page_widgets[index] is not None:
             return
         try:
-            page = _PAGE_FACTORIES[index](self)
+            page = _PAGE_FACTORIES[index](self.stack)
             self._page_widgets[index] = page
             self.stack.removeWidget(self.stack.widget(index))
             self.stack.insertWidget(index, page)
             if hasattr(page, "refresh_ui_scale"):
                 page.refresh_ui_scale()
-            if index == 1:
-                self._apply_pending_road_classification()
-                self._apply_pending_lane_projection()
-                self._apply_pending_esal_result()
-                self._apply_pending_aadt_pcu_result()
-        except Exception:
-            pass
+        except Exception as exc:
+            import traceback
+
+            traceback.print_exc()
+            QMessageBox.warning(self, "Page Error", f"Could not open this page.\n\n{exc}")
 
     @property
     def calculator_page(self) -> QWidget | None:
-        idx = 2
-        self._ensure_page(idx)
-        return self._page_widgets[idx]
+        self._ensure_page(RGD_HORIZONTAL_CURVATURE)
+        return self._page_widgets[RGD_HORIZONTAL_CURVATURE]
 
     def toggle_sidebar(self):
         self._sidebar_visible = not self._sidebar_visible
@@ -468,22 +749,66 @@ class MainWindow(QMainWindow):
         daily_totals = traffic_state.get("daily_totals")
         daily_totals_12h = traffic_state.get("daily_totals_12h")
         daily_totals_24h = traffic_state.get("daily_totals_24h")
-        if not daily_totals and not daily_totals_12h and not daily_totals_24h:
-            traffic_state["esal"] = None
-            self._apply_esal_result(None)
-            self.refresh_traffic_quick_results()
-            return
 
         growth_rate = DEFAULT_GROWTH_RATE
         input_page = self._page_widgets[0]
         if input_page is not None and hasattr(input_page, "active_growth_rate"):
             growth_rate = input_page.active_growth_rate()
 
+        load_mode = traffic_state.get("esal_load_mode", "standard_load")
+        lane_count = int(traffic_state.get("standard_lane_count") or 1)
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "esal_page"):
+            esal_page = detail_page.esal_page
+            load_mode = esal_page.active_esal_load_mode()
+            lane_count = esal_page.active_standard_lane_count()
+
+        traffic_state["esal_load_mode"] = load_mode
+        traffic_state["standard_lane_count"] = lane_count
+
+        geometry_design_years = 0
+        if input_page is not None and hasattr(input_page, "active_geometry_design_year"):
+            geometry_design_years = parse_design_years(input_page.active_geometry_design_year())
+        traffic_state["geometry_design_years"] = geometry_design_years
+
+        has_traffic_data = bool(daily_totals or daily_totals_12h or daily_totals_24h)
+        tld_data = traffic_state.get("tld_data") or {}
+        has_tld_values = load_mode == "tld" and bool(tld_data.get("has_parsed_values"))
+        if not has_traffic_data and not has_tld_values:
+            traffic_state["esal"] = None
+            self._apply_esal_result(None)
+            self.refresh_traffic_quick_results()
+            return
+
         try:
-            result = compute_esal_from_workbook_data(
-                traffic_state,
-                growth_rate=growth_rate,
-            )
+            if load_mode == "tld":
+                tld_data = traffic_state.get("tld_data")
+                if tld_data and tld_data.get("has_parsed_values"):
+                    from app.services.traffic_esal import compute_esal_from_tld_data
+
+                    result = compute_esal_from_tld_data(
+                        tld_data,
+                        growth_rate=growth_rate,
+                        geometry_design_years=geometry_design_years,
+                    )
+                else:
+                    from app.services.traffic_esal import compute_esal_from_workbook_data
+
+                    result = compute_esal_from_workbook_data(
+                        traffic_state,
+                        growth_rate=growth_rate,
+                        lane_count=1,
+                        geometry_design_years=geometry_design_years,
+                    )
+            else:
+                from app.services.traffic_esal import compute_esal_from_workbook_data
+
+                result = compute_esal_from_workbook_data(
+                    traffic_state,
+                    growth_rate=growth_rate,
+                    lane_count=lane_count,
+                    geometry_design_years=geometry_design_years,
+                )
         except Exception:
             result = None
 
@@ -521,6 +846,13 @@ class MainWindow(QMainWindow):
         traffic_state = self.calc_state.setdefault("traffic_analysis", {})
         traffic_state["traffic_count_rows"] = rows
         self._apply_traffic_count_rows(rows)
+
+    def set_tld_excel_data(self, data: dict) -> None:
+        """Store TLD workbook data for ESAL calculations."""
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        traffic_state["tld_data"] = data
+        traffic_state["esal_load_mode"] = "tld"
+        self.refresh_esal()
 
     def set_traffic_excel_data(self, data: dict) -> None:
         """Store temporary traffic investigation data for the current app session."""
@@ -688,7 +1020,7 @@ class MainWindow(QMainWindow):
                 os.close(fd)
                 pixmap.save(image_path)
             export_pdf(path, title=f"{APP_NAME} – Building Report", inputs=inp, results=res, image_path=image_path)
-            QMessageBox.information(self, "Export PDF", f"Saved: {path}")
+            self.statusBar().showMessage(tr("file.export.pdf.ok").format(path=Path(path).name), 5000)
         except Exception as e:
             QMessageBox.warning(self, "Export failed", str(e))
         finally:

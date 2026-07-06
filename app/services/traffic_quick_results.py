@@ -11,15 +11,7 @@ from app.services.traffic_lane_projection import (
 )
 
 
-def _format_int(value: int | float | None) -> str | None:
-    if value is None:
-        return None
-    number = int(round(value))
-    if number <= 0:
-        return None
-    return f"{number:,}"
-
-
+from app.utils.formatting import format_int as _format_int
 def _projection_row_at_design_year(
     projection_rows: list[dict],
     design_years: int,

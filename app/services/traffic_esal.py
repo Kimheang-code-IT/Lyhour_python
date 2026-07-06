@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.services.traffic_excel import VEHICLE_TYPE_COUNT, average_vehicle_totals
+from app.services.traffic_aadt_pcu import projection_chart_years, projection_table_years
 
 # ESAL factor per vehicle per day (equivalent axle loads), by Excel column C–T.
 COLUMN_ESAL_FACTORS: list[float] = [
@@ -52,10 +53,27 @@ class EsalDesignPeriodResult:
 class EsalResult:
     axle_numbers: dict[str, int]
     design_periods: tuple[EsalDesignPeriodResult, ...]
+    chart_periods: tuple[EsalDesignPeriodResult, ...] = ()
+    table_periods: tuple[EsalDesignPeriodResult, ...] = ()
+    geometry_design_years: int = 0
 
     @property
     def has_data(self) -> bool:
-        return any(period.total_esal > 0 for period in self.design_periods)
+        periods = self.chart_periods or self.design_periods
+        return any(period.total_esal > 0 for period in periods)
+
+    @property
+    def esal_table_rows(self) -> list[list[str]]:
+        rows: list[list[str]] = []
+        for period in self.table_periods:
+            rows.append([f"Year {period.years}", f"{period.total_esal:,}"])
+        return rows
+
+    @property
+    def esal_table_highlight_row(self) -> int | None:
+        if self.geometry_design_years <= 0 or not self.table_periods:
+            return None
+        return self.geometry_design_years - 1
 
 
 def get_traffic_class(esal_million: float) -> str:
@@ -147,6 +165,51 @@ def build_axle_numbers(vehicle_totals: list[int]) -> dict[str, int]:
     return numbers
 
 
+def _period_results_from_vehicle_totals(
+    vehicle_totals: list[int],
+    years_list: tuple[int, ...],
+    *,
+    growth_rate: float,
+) -> tuple[EsalDesignPeriodResult, ...]:
+    results: list[EsalDesignPeriodResult] = []
+    for years in years_list:
+        total_esal = total_esal_for_design_period(
+            vehicle_totals,
+            years,
+            growth_rate=growth_rate,
+        )
+        esal_million = total_esal / 1_000_000
+        results.append(
+            EsalDesignPeriodResult(
+                years=years,
+                total_esal=total_esal,
+                traffic_class=get_traffic_class(esal_million),
+            )
+        )
+    return tuple(results)
+
+
+def _period_results_from_daily_rate(
+    daily_rate: float,
+    years_list: tuple[int, ...],
+    *,
+    growth_rate: float,
+) -> tuple[EsalDesignPeriodResult, ...]:
+    results: list[EsalDesignPeriodResult] = []
+    for years in years_list:
+        multiplier = cumulative_growth_multiplier(years, growth_rate)
+        total_esal = int(round(daily_rate * 365 * multiplier))
+        esal_million = total_esal / 1_000_000
+        results.append(
+            EsalDesignPeriodResult(
+                years=years,
+                total_esal=total_esal,
+                traffic_class=get_traffic_class(esal_million),
+            )
+        )
+    return tuple(results)
+
+
 def build_design_period_description(periods: tuple[EsalDesignPeriodResult, ...]) -> str:
     """Plain-text design period lines (backward compatible)."""
     lines = [
@@ -162,12 +225,15 @@ def build_design_period_description_html(
     panel_width: int | None = None,
 ) -> str:
     """HTML description for the ESAL tab."""
-    from app.core.result_description_html import wrap_result_description_lines
+    from app.utils.result_html import result_highlight_style, wrap_result_description_lines
 
+    highlight = result_highlight_style()
     lines: list[str] = []
     for period in periods:
         value = period.traffic_class if period.traffic_class and period.traffic_class != "—" else "____"
-        lines.append(f"- Design period in {period.years} year is {value}")
+        lines.append(
+            f'- Design period in {period.years} year is <span style="{highlight}">{value}</span>'
+        )
 
     return wrap_result_description_lines(lines, panel_width=panel_width)
 
@@ -182,8 +248,14 @@ def compute_esal(
     summary_total_row: list | None = None,
     growth_rate: float = 0.05,
     design_periods: tuple[int, ...] = DESIGN_PERIODS,
+    geometry_design_years: int = 0,
+    vehicle_totals_override: list[int] | None = None,
 ) -> EsalResult:
-    if summary_total_row:
+    chart_years = projection_chart_years(geometry_design_years)
+    table_years = projection_table_years(geometry_design_years)
+    if vehicle_totals_override is not None:
+        vehicle_totals = list(vehicle_totals_override)
+    elif summary_total_row:
         vehicle_totals = vehicle_totals_from_summary_row(summary_total_row)
     elif daily_totals or daily_totals_12h or daily_totals_24h:
         vehicle_totals = sum_vehicle_totals(
@@ -201,31 +273,45 @@ def compute_esal(
             EsalDesignPeriodResult(years=years, total_esal=0, traffic_class="—")
             for years in design_periods
         )
+        empty_chart_periods = tuple(
+            EsalDesignPeriodResult(years=years, total_esal=0, traffic_class="—")
+            for years in chart_years
+        )
+        empty_table_periods = tuple(
+            EsalDesignPeriodResult(years=years, total_esal=0, traffic_class="—")
+            for years in table_years
+        )
         return EsalResult(
             axle_numbers={key: 0 for key, _ in AXLE_TABLE_GROUPS},
             design_periods=empty_periods,
+            chart_periods=empty_chart_periods,
+            table_periods=empty_table_periods,
+            geometry_design_years=geometry_design_years,
         )
 
     axle_numbers = build_axle_numbers(vehicle_totals)
-    period_results: list[EsalDesignPeriodResult] = []
-    for years in design_periods:
-        total_esal = total_esal_for_design_period(
-            vehicle_totals,
-            years,
-            growth_rate=growth_rate,
-        )
-        esal_million = total_esal / 1_000_000
-        period_results.append(
-            EsalDesignPeriodResult(
-                years=years,
-                total_esal=total_esal,
-                traffic_class=get_traffic_class(esal_million),
-            )
-        )
+    period_results = _period_results_from_vehicle_totals(
+        vehicle_totals,
+        design_periods,
+        growth_rate=growth_rate,
+    )
+    chart_period_results = _period_results_from_vehicle_totals(
+        vehicle_totals,
+        chart_years,
+        growth_rate=growth_rate,
+    )
+    table_period_results = _period_results_from_vehicle_totals(
+        vehicle_totals,
+        table_years,
+        growth_rate=growth_rate,
+    )
 
     return EsalResult(
         axle_numbers=axle_numbers,
-        design_periods=tuple(period_results),
+        design_periods=period_results,
+        chart_periods=chart_period_results,
+        table_periods=table_period_results,
+        geometry_design_years=geometry_design_years,
     )
 
 
@@ -233,7 +319,12 @@ def compute_esal_from_workbook_data(
     workbook_data: dict,
     *,
     growth_rate: float = 0.05,
+    lane_count: int = 1,
+    geometry_design_years: int = 0,
 ) -> EsalResult:
+    vehicle_totals = _vehicle_totals_from_workbook(workbook_data)
+    if lane_count > 1 and vehicle_totals:
+        vehicle_totals = _scale_vehicle_totals_for_lane(vehicle_totals, lane_count)
     return compute_esal(
         workbook_data.get("daily_totals"),
         daily_totals_12h=workbook_data.get("daily_totals_12h"),
@@ -242,12 +333,97 @@ def compute_esal_from_workbook_data(
         count_hour=workbook_data.get("traffic_count_hour", "12h"),
         summary_total_row=workbook_data.get("summary_total_row"),
         growth_rate=growth_rate,
+        geometry_design_years=geometry_design_years,
+        vehicle_totals_override=vehicle_totals if lane_count > 1 else None,
     )
+
+
+def compute_esal_from_tld_data(
+    tld_data: dict,
+    *,
+    growth_rate: float = 0.05,
+    design_periods: tuple[int, ...] = DESIGN_PERIODS,
+    geometry_design_years: int = 0,
+) -> EsalResult:
+    """Build ESAL results from TLD axle group numbers."""
+    chart_years = projection_chart_years(geometry_design_years)
+    table_years = projection_table_years(geometry_design_years)
+    axle_numbers = dict(tld_data.get("axle_numbers") or {})
+    if not any(axle_numbers.values()):
+        empty_periods = tuple(
+            EsalDesignPeriodResult(years=years, total_esal=0, traffic_class="—")
+            for years in design_periods
+        )
+        empty_chart_periods = tuple(
+            EsalDesignPeriodResult(years=years, total_esal=0, traffic_class="—")
+            for years in chart_years
+        )
+        empty_table_periods = tuple(
+            EsalDesignPeriodResult(years=years, total_esal=0, traffic_class="—")
+            for years in table_years
+        )
+        return EsalResult(
+            axle_numbers={key: 0 for key, _ in AXLE_TABLE_GROUPS},
+            design_periods=empty_periods,
+            chart_periods=empty_chart_periods,
+            table_periods=empty_table_periods,
+            geometry_design_years=geometry_design_years,
+        )
+
+    daily_rate = sum(int(axle_numbers.get(key, 0)) for key, _ in AXLE_TABLE_GROUPS) / 365.0
+    period_results = _period_results_from_daily_rate(
+        daily_rate,
+        design_periods,
+        growth_rate=growth_rate,
+    )
+    chart_period_results = _period_results_from_daily_rate(
+        daily_rate,
+        chart_years,
+        growth_rate=growth_rate,
+    )
+    table_period_results = _period_results_from_daily_rate(
+        daily_rate,
+        table_years,
+        growth_rate=growth_rate,
+    )
+
+    normalized_numbers = {key: int(axle_numbers.get(key, 0)) for key, _ in AXLE_TABLE_GROUPS}
+    return EsalResult(
+        axle_numbers=normalized_numbers,
+        design_periods=period_results,
+        chart_periods=chart_period_results,
+        table_periods=table_period_results,
+        geometry_design_years=geometry_design_years,
+    )
+
+
+def _vehicle_totals_from_workbook(workbook_data: dict) -> list[int]:
+    summary_total_row = workbook_data.get("summary_total_row")
+    if summary_total_row:
+        return vehicle_totals_from_summary_row(summary_total_row)
+    daily_totals = workbook_data.get("daily_totals")
+    daily_totals_12h = workbook_data.get("daily_totals_12h")
+    daily_totals_24h = workbook_data.get("daily_totals_24h")
+    if daily_totals or daily_totals_12h or daily_totals_24h:
+        return sum_vehicle_totals(
+            daily_totals,
+            daily_totals_12h=daily_totals_12h,
+            daily_totals_24h=daily_totals_24h,
+            survey_hours=int(workbook_data.get("survey_hours") or 12),
+            count_hour=workbook_data.get("traffic_count_hour", "12h"),
+        )
+    return []
+
+
+def _scale_vehicle_totals_for_lane(vehicle_totals: list[int], lane_count: int) -> list[int]:
+    lanes = max(1, int(lane_count))
+    return [int(round(count / lanes)) for count in vehicle_totals]
 
 
 def chart_bars_from_esal(result: EsalResult) -> list[tuple[str, float, str]]:
     bars: list[tuple[str, float, str]] = []
-    for index, period in enumerate(result.design_periods):
+    periods = result.chart_periods or result.design_periods
+    for index, period in enumerate(periods):
         color = CHART_COLORS[index % len(CHART_COLORS)]
-        bars.append((f"{period.years} year", float(period.total_esal), color))
+        bars.append((f"Year {period.years}", float(period.total_esal), color))
     return bars

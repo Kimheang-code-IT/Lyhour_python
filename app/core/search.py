@@ -23,12 +23,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent, QColor, QIcon
 
-# Pages: (display_name, section_name, page_index) — same order as sidebar
+from app.core.i18n import nav_label, tr
+from app.core.page_registry import SEARCH_PAGES as _REGISTRY_SEARCH_PAGES
+from app.core.theme import shell_stylesheet, theme_tokens
+
+# (page_route_key, section_route_key, page_index)
 SEARCH_PAGES = [
-    ("Input", "Traffic Analysis", 0),
-    ("Detail Result", "Traffic Analysis", 1),
-    ("Horizontal Curvature", "Road Geometry Design", 2),
-    ("Superelevation Design", "Road Geometry Design", 3),
+    (entry.route_key, entry.section_route_key, entry.index)
+    for entry in _REGISTRY_SEARCH_PAGES
 ]
 
 # Fluent widgets (safe fallback)
@@ -49,7 +51,7 @@ except Exception:
 class SearchPalette(QFrame):
     """Popup: search input + pages only. Location: top-0."""
 
-    pageSelected = pyqtSignal(int)  # page index (0..3)
+    pageSelected = pyqtSignal(int)  # page index
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -61,53 +63,6 @@ class SearchPalette(QFrame):
         self.setMinimumWidth(560)
         self.setMinimumHeight(340)
         self.setMaximumHeight(380)
-
-        self.setStyleSheet("""
-            #searchPalette {
-                border: 1px solid #3e3e40;
-                border-radius: 7px;
-            }
-
-            /* Header */
-            QLabel#paletteTitle {
-                color: #ffffff;
-                font-size: 14px;
-                font-weight: 600;
-            }
-            QLabel#paletteHint {
-                color: #9aa0a6;
-                font-size: 12px;
-            }
-
-            /* Qt fallback widgets */
-            QLineEdit {
-                background-color: #3c3c3c;
-                color: #e6e6e6;
-                border: 1px solid #3e3e40;
-                border-radius: 8px;
-                padding: 10px 12px;
-                font-size: 14px;
-                selection-background-color: #094771;
-            }
-            QLineEdit:focus {
-                border: 1px solid #094771;
-            }
-            QLineEdit::placeholder { color: #888; }
-
-            QListWidget {
-                background-color: transparent;
-                color: #e0e0e0;
-                border: none;
-                outline: none;
-                padding: 6px;
-            }
-            QListWidget::item {
-                padding: 4px 6px;
-                border-radius: 8px;
-            }
-            QListWidget::item:hover { background-color: #2a2d2e; }
-            QListWidget::item:selected { background-color: #094771; color: #ffffff; }
-        """)
 
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(18)
@@ -139,11 +94,13 @@ class SearchPalette(QFrame):
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(10)
 
-        title = QLabel("Search")
+        title = QLabel(tr("search.palette_title"))
         title.setObjectName("paletteTitle")
+        self._title_label = title
 
-        hint = QLabel("Enter: open   Esc: close")
+        hint = QLabel(tr("search.palette_hint"))
         hint.setObjectName("paletteHint")
+        self._hint_label = hint
         hint.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         header.addWidget(title)
@@ -160,7 +117,7 @@ class SearchPalette(QFrame):
                 pass
         else:
             self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Search pages...")
+        self.search_edit.setPlaceholderText(tr("search.placeholder"))
         try:
             self.search_edit.setClearButtonEnabled(True)
         except Exception:
@@ -176,11 +133,7 @@ class SearchPalette(QFrame):
         self.page_list.setObjectName("pageList")
         self.page_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        # Add items
-        for name, section, idx in SEARCH_PAGES:
-            item = QListWidgetItem(icon_file, f"{name}    ·    {section}")
-            item.setData(Qt.ItemDataRole.UserRole, ("page", idx, name, section))
-            self.page_list.addItem(item)
+        self._populate_page_list(icon_file)
 
         layout.addWidget(self.page_list, 1)
 
@@ -190,6 +143,56 @@ class SearchPalette(QFrame):
 
         if self.page_list.count() > 0:
             self.page_list.setCurrentRow(0)
+        self.apply_theme()
+
+    def apply_theme(self) -> None:
+        tokens = theme_tokens()
+        extra = f"""
+            QLabel#paletteTitle {{ font-size: 14px; font-weight: 600; }}
+            QLabel#paletteHint {{ font-size: 12px; }}
+            #searchPalette QLineEdit {{
+                border-radius: 8px;
+                padding: 10px 12px;
+                font-size: 14px;
+            }}
+            #searchPalette QLineEdit:focus {{
+                border: 1px solid {tokens.selection_bg};
+            }}
+            #searchPalette QListWidget::item {{
+                padding: 4px 6px;
+                border-radius: 8px;
+            }}
+        """
+        self.setStyleSheet(shell_stylesheet(tokens) + extra)
+
+    def _page_list_label(self, route_key: str, section_route_key: str) -> str:
+        name = nav_label(route_key)
+        section = nav_label(section_route_key)
+        return f"{name}    ·    {section}"
+
+    def _populate_page_list(self, icon: QIcon) -> None:
+        self.page_list.clear()
+        for route_key, section_route_key, idx in SEARCH_PAGES:
+            label = self._page_list_label(route_key, section_route_key)
+            item = QListWidgetItem(icon, label)
+            item.setData(
+                Qt.ItemDataRole.UserRole,
+                ("page", idx, route_key, section_route_key),
+            )
+            self.page_list.addItem(item)
+
+    def retranslate_ui(self) -> None:
+        self.apply_theme()
+        self._title_label.setText(tr("search.palette_title"))
+        self._hint_label.setText(tr("search.palette_hint"))
+        self.search_edit.setPlaceholderText(tr("search.placeholder"))
+        for i in range(self.page_list.count()):
+            item = self.page_list.item(i)
+            data = item.data(Qt.ItemDataRole.UserRole)
+            if not data:
+                continue
+            _, _idx, route_key, section_route_key = data
+            item.setText(self._page_list_label(route_key, section_route_key))
 
     def _first_visible_row(self) -> int:
         for i in range(self.page_list.count()):
@@ -203,7 +206,11 @@ class SearchPalette(QFrame):
         for i in range(self.page_list.count()):
             item = self.page_list.item(i)
             data = item.data(Qt.ItemDataRole.UserRole)
-            _, _idx, name, section = data
+            if not data:
+                continue
+            _, _idx, route_key, section_route_key = data
+            name = nav_label(route_key)
+            section = nav_label(section_route_key)
             match = (not q) or (q in name.lower()) or (q in section.lower())
             item.setHidden(not match)
 

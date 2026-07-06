@@ -31,9 +31,9 @@ VEHICLE_GROUP_ORANGE = (3, 4, 5, 6, 7, 8)  # Class 1E–1J
 VEHICLE_GROUP_GREEN = tuple(range(9, VEHICLE_TYPE_COUNT))  # Heavy vehicles
 
 VEHICLE_GROUP_DEFINITIONS: tuple[tuple[str, tuple[int, ...], str], ...] = (
-    ("Class 1A–1C", VEHICLE_GROUP_YELLOW, "#f1c40f"),
-    ("Class 1E–1J", VEHICLE_GROUP_ORANGE, "#e67e22"),
-    ("Heavy Vehicles", VEHICLE_GROUP_GREEN, "#2ecc71"),
+    ("Motorize", VEHICLE_GROUP_YELLOW, "#f1c40f"),
+    ("Passenger Vehicle", VEHICLE_GROUP_ORANGE, "#e67e22"),
+    ("Heavy Vehicle", VEHICLE_GROUP_GREEN, "#2ecc71"),
 )
 
 
@@ -156,6 +156,59 @@ def build_summary_total_row(
     return ["Total", *adjusted, grand_total]
 
 
+CHART_START_HOUR = 7
+
+
+def chart_time_display_label(label: str, *, compact: bool = False) -> str:
+    """Format an interval like 7:00-8:00 as 7-8 AM for chart axes."""
+    match = _TIME_RE.match(label.strip())
+    if not match:
+        return label.replace(":00", "")
+
+    start_h = int(match.group(1))
+    end_h = int(match.group(3))
+
+    def _hour_display(hour: int) -> int:
+        if hour == 0 or hour == 24:
+            return 12
+        if hour > 12:
+            return hour - 12
+        return hour
+
+    start_text = _hour_display(start_h)
+    end_text = _hour_display(end_h)
+    if compact:
+        return f"{start_text}-{end_text}"
+
+    suffix = "AM" if start_h < 12 else "PM"
+    return f"{start_text}-{end_text} {suffix}"
+
+
+def order_traffic_count_chart_rows(
+    rows: list[list],
+    *,
+    max_hours: int | None = None,
+    start_hour: int = CHART_START_HOUR,
+) -> list[list]:
+    """Order hourly rows for the summary line chart starting at start_hour."""
+    if not rows:
+        return []
+    limit = max_hours if max_hours is not None else len(rows)
+    by_hour = {_hour_block_start_hour(str(row[0])): row for row in rows}
+    ordered: list[list] = []
+    for offset in range(24):
+        hour = (start_hour + offset) % 24
+        row = by_hour.get(hour)
+        if row is not None:
+            ordered.append(row)
+        if len(ordered) >= limit:
+            break
+    if ordered:
+        return ordered
+    sorted_rows = sorted(rows, key=lambda row: _time_sort_key(str(row[0])))
+    return sorted_rows[:limit]
+
+
 def filter_traffic_count_rows(
     rows: list[list],
     *,
@@ -166,10 +219,9 @@ def filter_traffic_count_rows(
     if not rows:
         return []
     if str(count_hour).strip() == "24h" and survey_hours >= 24:
-        return list(rows)
+        return order_traffic_count_chart_rows(rows, max_hours=24)
 
-    sorted_rows = sorted(rows, key=lambda row: _time_sort_key(str(row[0])))
-    return sorted_rows[:12]
+    return order_traffic_count_chart_rows(rows, max_hours=12)
 
 
 def count_hour_power_description(count_hour: str, *, survey_hours: int) -> str:

@@ -9,18 +9,15 @@ from PyQt6.QtGui import QPixmap, QPainter, QColor
 _IMAGE_ASSETS = Path(__file__).resolve().parent.parent / "assets" / "image"
 
 
+from app.core.theme import shell_stylesheet, theme_tokens
+
+
 class PreviewPanel(QFrame):
     """Right column: preview area and Quick Results card."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("previewPanel")
-        self.setStyleSheet("""
-            #previewPanel { background-color: #252526; border: none; outline: none; outline-color: transparent; }
-            #quickResultsCard { background-color: #2d2d30; border: none; padding: 0; outline: none; outline-color: transparent; }
-            #quickResultsCard #cardTitle { font-weight: bold; font-size: 15px; color: #ffffff; padding: 14px 16px; background-color: #333333; border: none; border-top-left-radius: 8px; border-top-right-radius: 8px; }
-            #quickResultsCard QLabel { padding: 10px 16px; color: #cccccc; font-size: 16px; border: none; }
-        """)
         self.setMinimumWidth(100)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout = QVBoxLayout(self)
@@ -30,12 +27,11 @@ class PreviewPanel(QFrame):
         self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setHandleWidth(8)
-        self.splitter.setStyleSheet("QSplitter::handle { background-color: #3e3e40; height: 8px; }")
 
         self.preview_label = QLabel()
+        self.preview_label.setObjectName("previewImage")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumHeight(120)
-        self.preview_label.setStyleSheet("background-color: #1e1e1e; ")
         self.preview_label.setScaledContents(False)
         self._set_default_preview_image()
         self.splitter.addWidget(self.preview_label)
@@ -62,6 +58,15 @@ class PreviewPanel(QFrame):
         # Keys whose numeric values are displayed with " m" suffix (radius in meters)
         self._result_suffix_m: set[str] = set()
         self.set_horizontal_curvature_schema()
+        self.apply_theme()
+
+    def apply_theme(self) -> None:
+        tokens = theme_tokens()
+        self.setStyleSheet(shell_stylesheet(tokens))
+        self.splitter.setStyleSheet(
+            f"QSplitter::handle {{ background-color: {tokens.splitter_handle}; height: 8px; }}"
+        )
+        self.preview_label.setStyleSheet(f"background-color: {tokens.bg_preview};")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -88,10 +93,11 @@ class PreviewPanel(QFrame):
 
     def _set_placeholder_image(self):
         self._default_pixmap = None
+        tokens = theme_tokens()
         pm = QPixmap(320, 200)
-        pm.fill(QColor(30, 30, 30))
+        pm.fill(QColor(tokens.bg_preview))
         painter = QPainter(pm)
-        painter.setPen(QColor(80, 80, 80))
+        painter.setPen(QColor(tokens.text_muted))
         painter.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "Preview")
         painter.end()
         self.preview_label.setPixmap(pm)

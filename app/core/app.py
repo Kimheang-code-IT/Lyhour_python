@@ -1,24 +1,11 @@
-"""Application theme setup: Fluent dark theme + accent color."""
+"""Application theme setup: Fluent theme + accent color."""
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QColor
 
-try:
-    from qfluentwidgets import setTheme, Theme, setThemeColor
-    _HAS_FLUENT = True
-except ImportError:
-    _HAS_FLUENT = False
+from app.core.theme import apply_theme_to_app
+from app.services.app_settings import AppSettings
 
 
 def setup_theme(app: QApplication) -> None:
-    """Apply dark theme and accent color. Safe if qfluentwidgets not installed."""
-    if not _HAS_FLUENT:
-        return
-    try:
-        setTheme(Theme.DARK)
-        setThemeColor("#0078D4")
-    except Exception:
-        try:
-            setTheme(Theme.DARK)
-            setThemeColor(QColor(0, 120, 212))
-        except Exception:
-            pass
+    """Apply saved theme preferences. Safe if qfluentwidgets is not installed."""
+    prefs = AppSettings.instance().load()
+    apply_theme_to_app(app, theme=prefs.theme, accent=prefs.accent_color)

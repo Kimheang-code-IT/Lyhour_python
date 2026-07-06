@@ -31,6 +31,15 @@ VEHICLE_CATEGORIES: list[tuple[str, list[int]]] = [
 AADT_BAR_COLOR = "#156082"
 PCU_BAR_COLOR = "#e97132"
 
+CHART_YEAR_STEP = 5
+
+
+@dataclass(frozen=True)
+class AadtPcuProjectionRow:
+    years: int
+    aadt: int
+    pcu: int
+
 
 @dataclass(frozen=True)
 class VehicleCategoryResult:
@@ -52,6 +61,7 @@ class AadtPcuResult:
     growth_rate: float = 0.0
     area_type: str = DEFAULT_AREA_TYPE
     input_source: str = "read_data"
+    vehicle_totals: tuple[int, ...] = ()
 
     @property
     def total_aadt(self) -> int:
@@ -74,6 +84,55 @@ class AadtPcuResult:
             (f"AADT ({year})", float(self.projected_total_aadt), AADT_BAR_COLOR),
             (f"PCU ({year})", float(self.projected_total_pcu), PCU_BAR_COLOR),
         ]
+
+    @property
+    def chart_groups(self) -> list[tuple[str, list[tuple[float, str]]]]:
+        """Grouped AADT/PCU bars at year 1, 5, 10, 15, … up to geometry design year."""
+        groups: list[tuple[str, list[tuple[float, str]]]] = []
+        for years in projection_chart_years(self.design_years):
+            aadt, pcu = self.projected_totals_at_year(years)
+            groups.append((
+                f"Year {years}",
+                [
+                    (float(aadt), AADT_BAR_COLOR),
+                    (float(pcu), PCU_BAR_COLOR),
+                ],
+            ))
+        return groups
+
+    @property
+    def projection_table_rows(self) -> list[list[str]]:
+        """Table rows (Year, AADT, PCU) for each year from 1 through geometry design year."""
+        rows: list[list[str]] = []
+        for years in projection_table_years(self.design_years):
+            aadt, pcu = self.projected_totals_at_year(years)
+            rows.append([f"Year {years}", f"{aadt:,}", f"{pcu:,}"])
+        return rows
+
+    @property
+    def projection_table_highlight_row(self) -> int | None:
+        if self.design_years <= 0:
+            return None
+        return self.design_years - 1
+
+    def projected_totals_at_year(self, years: int) -> tuple[int, int]:
+        """Project base traffic to a future year count."""
+        if not self.has_data and years <= 0:
+            return 0, 0
+        factors = pcu_factors_for_area_type(self.area_type)
+        if self.input_source == "direct_input":
+            return (
+                project_traffic_value(float(self.base_total_aadt), years, self.growth_rate),
+                project_traffic_value(float(self.base_total_pcu), years, self.growth_rate),
+            )
+        if self.vehicle_totals:
+            projected_totals = project_vehicle_totals(list(self.vehicle_totals), years, self.growth_rate)
+            _categories, aadt, pcu = _result_from_vehicle_totals(projected_totals, pcu_factors=factors)
+            return aadt, pcu
+        return (
+            project_traffic_value(float(self.base_total_aadt), years, self.growth_rate),
+            project_traffic_value(float(self.base_total_pcu), years, self.growth_rate),
+        )
 
     @property
     def table_rows(self) -> list[list[str]]:
@@ -107,6 +166,27 @@ def parse_design_years(label: str) -> int:
     if not match:
         return 0
     return max(0, int(match.group(1)))
+
+
+def projection_chart_years(design_years: int) -> tuple[int, ...]:
+    """Chart x-axis years: 1, 5, 10, 15, 20, … through geometry design year."""
+    if design_years <= 0:
+        return ()
+    years = [1]
+    milestone = CHART_YEAR_STEP
+    while milestone < design_years:
+        years.append(milestone)
+        milestone += CHART_YEAR_STEP
+    if years[-1] != design_years:
+        years.append(design_years)
+    return tuple(years)
+
+
+def projection_table_years(design_years: int) -> tuple[int, ...]:
+    """Table rows: year 1, 2, 3, … through geometry design year."""
+    if design_years <= 0:
+        return ()
+    return tuple(range(1, design_years + 1))
 
 
 def column_pcu(count: int, factor: float) -> int:
@@ -329,6 +409,7 @@ def compute_aadt_pcu(
         growth_rate=growth_rate,
         area_type=resolved_area_type,
         input_source="read_data",
+        vehicle_totals=tuple(vehicle_totals),
     )
 
 

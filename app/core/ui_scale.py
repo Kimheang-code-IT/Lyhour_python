@@ -10,6 +10,25 @@ _MAX_SCALE = 1.35
 class UiScale:
     _factor = 1.0
     _width = _REFERENCE_WIDTH
+    _user_font_scale = 1.0
+    _compact_mode = False
+
+    @classmethod
+    def set_compact_mode(cls, enabled: bool) -> None:
+        cls._compact_mode = bool(enabled)
+
+    @classmethod
+    def set_user_font_scale(cls, scale: float) -> None:
+        cls._user_font_scale = max(0.85, min(1.35, float(scale or 1.0)))
+
+    @classmethod
+    def user_font_scale(cls) -> float:
+        return cls._user_font_scale
+
+    @classmethod
+    def effective_factor(cls) -> float:
+        compact = 0.92 if cls._compact_mode else 1.0
+        return cls._factor * cls._user_font_scale * compact
 
     @classmethod
     def factor(cls) -> float:
@@ -30,11 +49,11 @@ class UiScale:
 
     @classmethod
     def px(cls, base: float) -> int:
-        return max(1, round(base * cls._factor))
+        return max(1, round(base * cls.effective_factor()))
 
     @classmethod
     def pt(cls, base: float) -> float:
-        return max(6.0, round(base * cls._factor, 1))
+        return max(6.0, round(base * cls.effective_factor(), 1))
 
     @classmethod
     def spacing(cls, base: float) -> int:
@@ -49,8 +68,8 @@ class UiScale:
 
     @classmethod
     def px_local(cls, base: float, width: int, *, reference: int) -> int:
-        return max(1, round(base * cls._factor * cls.local_factor(width, reference=reference)))
+        return max(1, round(base * cls.effective_factor() * cls.local_factor(width, reference=reference)))
 
     @classmethod
     def pt_local(cls, base: float, width: int, *, reference: int) -> float:
-        return max(6.0, round(base * cls._factor * cls.local_factor(width, reference=reference), 1))
+        return max(6.0, round(base * cls.effective_factor() * cls.local_factor(width, reference=reference), 1))

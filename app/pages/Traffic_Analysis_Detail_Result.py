@@ -4,12 +4,13 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QStackedWidget, QVBoxLayout, QW
 from qfluentwidgets import SegmentedWidget
 
 from app.core.ui_style import title_style
-from app.pages.subpages.aadt_pcu import AadtPcuPage
-from app.pages.subpages.esal import EsalPage
-from app.pages.subpages.number_of_lane import NumberOfLanePage
-from app.pages.subpages.road_classification import RoadClassificationPage
-from app.pages.subpages.summary_traffic_count import SummaryTrafficCountPage
+from app.pages.Analysis.aadt_pcu import AadtPcuPage
+from app.pages.Analysis.esal import EsalPage
+from app.pages.Analysis.number_of_lane import NumberOfLanePage
+from app.pages.Analysis.road_classification import RoadClassificationPage
+from app.pages.Analysis.summary_traffic_count import SummaryTrafficCountPage
 from app.widgets.button import secondary_button
+from app.widgets.traffic_results import refresh_theme_widgets
 
 
 class TrafficAnalysisDetailResultPage(QWidget):
@@ -71,7 +72,25 @@ class TrafficAnalysisDetailResultPage(QWidget):
             if hasattr(page, "refresh_ui_scale"):
                 page.refresh_ui_scale()
 
-    def _toggle_quick_panel(self):
+    def refresh_theme(self) -> None:
+        refresh_theme_widgets(self)
+        self.refresh_ui_scale()
+        for page in (
+            self.summary_page,
+            self.aadt_pcu_page,
+            self.road_classification_page,
+            self.number_of_lane_page,
+            self.esal_page,
+        ):
+            if hasattr(page, "refresh_theme"):
+                page.refresh_theme()
+            elif hasattr(page, "refresh_ui_scale"):
+                page.refresh_ui_scale()
+        mw = self.window()
+        if hasattr(mw, "toggle_quick_panel"):
+            self.sync_quick_panel_button(mw.toggle_quick_panel())
+
+    def _toggle_quick_panel(self) -> None:
         mw = self.window()
         if hasattr(mw, "toggle_quick_panel"):
             self.sync_quick_panel_button(mw.toggle_quick_panel())

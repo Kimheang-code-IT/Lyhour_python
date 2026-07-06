@@ -8,22 +8,26 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QScrollArea,
     QSizePolicy,
-    QRadioButton,
     QButtonGroup,
+    QRadioButton,
 )
 
-from app.core.components.form_controls import (
+from app.widgets.form_controls import (
     make_combo,
     make_decimal_line_edit,
     make_double_spin,
     make_integer_line_edit,
+    make_radio,
 )
+from app.core.theme import card_stylesheet, theme_tokens
 from app.core.ui_scale import UiScale
 from app.core.ui_style import section_title_style, title_style
-from app.services.traffic_excel import count_hour_power_description, read_traffic_investigation_workbook
+from app.core.i18n import tr
+from app.services.excel_io import ExcelIOService
 from app.data.area_type import AREA_TYPE_OPTIONS, DEFAULT_AREA_TYPE
 from app.widgets.labeled_input import add_labeled_row
 from app.widgets.button import secondary_button
+from app.widgets.traffic_results import refresh_theme_widgets
 
 try:
     from qfluentwidgets import SubtitleLabel
@@ -52,9 +56,7 @@ def section_with_radio(
 
     # Title row with radio, title, (optional) button
     title_row = QHBoxLayout()
-    radio = QRadioButton()
-    radio.setChecked(True)
-    radio.setStyleSheet("QRadioButton { margin-right: 8px; }")
+    radio = make_radio(checked=True)
     if _HAS_FLUENT and SubtitleLabel is not None:
         title_lbl = SubtitleLabel(title)
     else:
@@ -70,9 +72,7 @@ def section_with_radio(
     # The input card frame
     frame = QFrame(section_widget)
     frame.setObjectName("trafficSectionFrame")
-    frame.setStyleSheet(
-        "#trafficSectionFrame { background-color: transparent; border: 1px solid #3e3e40; border-radius: 6px; }"
-    )
+    frame.setStyleSheet(card_stylesheet(theme_tokens()))
     frame.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
     outer = QVBoxLayout(frame)
     outer.setContentsMargins(16, 12, 16, 16)
@@ -257,6 +257,10 @@ class TrafficAnalysisInputPage(QWidget):
             widget.setMinimumHeight(row_height)
             widget.setMaximumHeight(row_height)
 
+    def refresh_theme(self) -> None:
+        refresh_theme_widgets(self)
+        self.refresh_ui_scale()
+
     def _toggle_quick_panel(self):
         mw = self.window()
         if hasattr(mw, "toggle_quick_panel"):
@@ -349,6 +353,8 @@ class TrafficAnalysisInputPage(QWidget):
             mw.refresh_aadt_pcu()
         elif hasattr(mw, "refresh_road_classification"):
             mw.refresh_road_classification()
+        if hasattr(mw, "refresh_esal"):
+            mw.refresh_esal()
 
     def _on_pavement_design_year_changed(self, _text: str = "") -> None:
         mw = self.window()
@@ -366,70 +372,19 @@ class TrafficAnalysisInputPage(QWidget):
             mw.refresh_traffic_summary(self.active_traffic_count_hour())
 
     def _on_read_excel(self):
-        """Read sheets D1/D2 and store temporary traffic data for this session."""
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        """Import Excel via main window (temporary cache, no data preview)."""
+        from PyQt6.QtWidgets import QFileDialog
+
         path, _ = QFileDialog.getOpenFileName(
-            self, "Read Excel", "", "Excel (*.xlsx *.xls);;All Files (*)"
+            self,
+            tr("menu.file.import_excel"),
+            "",
+            ExcelIOService.excel_filter(),
         )
         if not path:
             return
-
-        self.read_excel_path = path
-        count_hour = self.read_count_hour.currentText()
-        try:
-            traffic_data = read_traffic_investigation_workbook(path, count_hour=count_hour)
-        except Exception as exc:
-            QMessageBox.warning(
-                self,
-                "Read Excel",
-                f"Selected Excel file:\n{path}\n\nCould not read traffic count data:\n{exc}",
-            )
-            return
-
-        traffic_rows = traffic_data.get("traffic_count_rows", [])
-        summary_row = traffic_data.get("summary_total_row", [])
-        if not traffic_rows and not summary_row:
-            QMessageBox.information(
-                self,
-                "Read Excel",
-                f"Selected Excel file:\n{path}\n\n"
-                "No hourly traffic rows were found in sheets D1 and D2.",
-            )
-            return
-
         mw = self.window()
-        if hasattr(mw, "set_traffic_excel_data"):
-            mw.set_traffic_excel_data(traffic_data)
-        elif hasattr(mw, "set_traffic_count_rows"):
-            mw.set_traffic_count_rows(traffic_rows)
-
-        sheet_lines = []
-        for sheet_name in ("D1", "D2"):
-            count = len(traffic_data.get("sheets", {}).get(sheet_name, []))
-            if count:
-                sheet_lines.append(f"{sheet_name}: {count} hourly row(s)")
-
-        missing = traffic_data.get("missing_sheets") or []
-        missing_text = ""
-        if missing:
-            missing_text = f"\n\nMissing sheet(s): {', '.join(missing)}"
-
-        survey_hours = int(traffic_data.get("survey_hours") or 12)
-        power_text = count_hour_power_description(count_hour, survey_hours=survey_hours)
-
-        QMessageBox.information(
-            self,
-            "Read Excel",
-            (
-                f"Selected Excel file:\n{path}\n\n"
-                f"Temporary data loaded from sheets D1 and D2.\n"
-                f"Excel survey period detected: {survey_hours}h.\n"
-                f"{chr(10).join(sheet_lines)}\n"
-                f"Combined hourly rows shown: {len(traffic_rows)}\n"
-                f"Vehicle totals averaged from D1 and D2 (C8:T127 per sheet).\n"
-                f"{power_text}."
-                f"{missing_text}\n\n"
-                "Summary Traffic count data table and chart are updated.\n"
-                "AADT & PCU and Number of Lane tabs are updated."
-            ),
-        )
+        count_hour = self.active_traffic_count_hour()
+        if hasattr(mw, "import_excel_file"):
+            mw.import_excel_file(path, count_hour=count_hour)
+            self.read_excel_path = path
