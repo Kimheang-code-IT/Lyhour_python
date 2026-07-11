@@ -21,7 +21,6 @@ from app.core.i18n import tr
 from app.core.theme import card_stylesheet, theme_tokens
 from app.services.app_settings import FONT_SCALE_OPTIONS, AppSettings, AppSettingsData
 from app.widgets.button import primary_button, secondary_button
-from app.widgets.loading_overlay import LoadingOverlay
 from app.widgets.form_controls import (
     combo_current_data,
     make_data_combo,
@@ -459,12 +458,11 @@ class _SettingsPanel:
 
 
 class _SettingsApplyController:
-    """Show loading UI while settings save and the main window refreshes."""
+    """Show full-window loading while settings save and the main window refreshes."""
 
-    def __init__(self, dialog, panel: _SettingsPanel, overlay_parent: QWidget) -> None:
+    def __init__(self, dialog, panel: _SettingsPanel) -> None:
         self._dialog = dialog
         self._panel = panel
-        self._overlay = LoadingOverlay(overlay_parent)
         self._applying = False
         self._close_after = False
         self._action_buttons: list[QWidget] = []
@@ -492,7 +490,7 @@ class _SettingsApplyController:
         self._applying = True
         self._close_after = close
         self._set_actions_enabled(False)
-        self._overlay.show_busy(tr("settings.applying"))
+        self._dialog.hide()
         QApplication.processEvents()
 
         main_window = self._main_window()
@@ -512,11 +510,12 @@ class _SettingsApplyController:
     def _on_main_apply_finished(self) -> None:
         if not self._applying:
             return
-        self._overlay.hide_busy()
         self._set_actions_enabled(True)
         self._applying = False
         if self._close_after:
             self._dialog.accept()
+        else:
+            self._dialog.show()
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         for button in self._action_buttons:
@@ -568,7 +567,7 @@ if _HAS_FLUENT and MaskDialogBase is not None:
             self._apply_btn.clicked.connect(self._apply_only)
             self._ok_btn.clicked.connect(self._accept)
 
-            self._apply_controller = _SettingsApplyController(self, self._panel, self.widget)
+            self._apply_controller = _SettingsApplyController(self, self._panel)
             self._apply_controller.register_action_buttons(
                 self._cancel_btn,
                 self._apply_btn,
@@ -623,7 +622,7 @@ else:
             apply_btn.clicked.connect(self._apply_only)
             ok_btn.clicked.connect(self._accept)
 
-            self._apply_controller = _SettingsApplyController(self, self._panel, self)
+            self._apply_controller = _SettingsApplyController(self, self._panel)
             self._apply_controller.register_action_buttons(cancel, apply_btn, ok_btn)
 
         def _apply_only(self) -> None:

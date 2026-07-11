@@ -129,6 +129,13 @@ class TrafficAnalysisDetailResultPage(QWidget):
     def set_lane_projection(self, result) -> None:
         self.number_of_lane_page.set_lane_projection(result)
 
+    def set_lane_los_context(
+        self,
+        road_classification: str | None,
+        selected_los: str | None,
+    ) -> None:
+        self.number_of_lane_page.set_lane_los_context(road_classification, selected_los)
+
     def set_esal_result(self, result) -> None:
         self.esal_page.set_esal_result(result)
 

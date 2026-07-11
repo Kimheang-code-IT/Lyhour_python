@@ -1,10 +1,11 @@
-"""Semi-transparent busy overlay with spinner for long-running UI updates."""
+"""Semi-transparent busy overlay with spinner or skeleton for long-running UI updates."""
 from __future__ import annotations
 
 from PyQt6.QtCore import QEvent, Qt
-from PyQt6.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QLabel, QProgressBar, QStackedWidget, QVBoxLayout, QWidget
 
 from app.core.theme import current_theme
+from app.widgets.skeleton_screen import SkeletonPanel
 
 try:
     from qfluentwidgets import BodyLabel, IndeterminateProgressRing
@@ -19,6 +20,9 @@ except Exception:
 class LoadingOverlay(QWidget):
     """Covers its parent widget with a dimmed backdrop and loading indicator."""
 
+    _MODE_SPINNER = 0
+    _MODE_SKELETON = 1
+
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setObjectName("loadingOverlay")
@@ -29,15 +33,28 @@ class LoadingOverlay(QWidget):
         layout.setSpacing(12)
         layout.addStretch(1)
 
+        self._indicator_stack = QStackedWidget(self)
+        self._indicator_stack.setStyleSheet("background: transparent; border: none;")
+
+        spinner_host = QWidget()
+        spinner_layout = QVBoxLayout(spinner_host)
+        spinner_layout.setContentsMargins(0, 0, 0, 0)
+        spinner_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         if _HAS_FLUENT and IndeterminateProgressRing is not None:
-            self._spinner = IndeterminateProgressRing(self, start=False)
+            self._spinner = IndeterminateProgressRing(spinner_host, start=False)
             self._spinner.setFixedSize(48, 48)
-            layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignHCenter)
+            spinner_layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignHCenter)
         else:
-            self._spinner = QProgressBar(self)
+            self._spinner = QProgressBar(spinner_host)
             self._spinner.setRange(0, 0)
             self._spinner.setFixedSize(160, 8)
-            layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignHCenter)
+            spinner_layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self._skeleton = SkeletonPanel(self._indicator_stack)
+        self._indicator_stack.addWidget(spinner_host)
+        self._indicator_stack.addWidget(self._skeleton)
+        layout.addWidget(self._indicator_stack, 1)
 
         if _HAS_FLUENT and BodyLabel is not None:
             self._message = BodyLabel("")
@@ -53,10 +70,10 @@ class LoadingOverlay(QWidget):
 
     def _apply_style(self) -> None:
         if current_theme() == "light":
-            backdrop = "rgba(255, 255, 255, 0.72)"
+            backdrop = "rgba(255, 255, 255, 0.78)"
             text = "#1e1e1e"
         else:
-            backdrop = "rgba(0, 0, 0, 0.55)"
+            backdrop = "rgba(0, 0, 0, 0.62)"
             text = "#f0f0f0"
         self.setStyleSheet(
             f"#loadingOverlay {{ background-color: {backdrop}; }}"
@@ -77,12 +94,17 @@ class LoadingOverlay(QWidget):
         if parent is not None:
             self.setGeometry(parent.rect())
 
-    def show_busy(self, message: str = "") -> None:
+    def show_busy(self, message: str = "", *, skeleton: bool = False) -> None:
         self._apply_style()
         self._message.setText(message)
         self._message.setVisible(bool(message))
+        self._indicator_stack.setCurrentIndex(
+            self._MODE_SKELETON if skeleton else self._MODE_SPINNER
+        )
+        if skeleton:
+            self._skeleton.refresh_theme()
         self._sync_geometry()
-        if hasattr(self._spinner, "start"):
+        if not skeleton and hasattr(self._spinner, "start"):
             self._spinner.start()
         self.show()
         self.raise_()

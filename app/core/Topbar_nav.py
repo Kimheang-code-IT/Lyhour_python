@@ -122,7 +122,7 @@ def _toolbar_btn(text: str, tooltip: str = "") -> QPushButton:
 
 
 class TopbarNav(QFrame):
-    """Title bar: menus | centered search | toggle sidebar | toggle preview."""
+    """Title bar: menus | centered search | toggle sidebar."""
 
     toggleSidebarRequested = pyqtSignal()
     togglePreviewRequested = pyqtSignal()
@@ -198,12 +198,9 @@ class TopbarNav(QFrame):
         self.search_input.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.search_input.mousePressEvent = lambda e: self._show_search_palette()
 
-        self.toggle_sidebar_btn = _icon_btn("\u2630", "Toggle Primary Side Bar (Ctrl+B)", size=36)
+        self.toggle_sidebar_btn = _icon_btn("\u2630", tr("menu.view.toggle_sidebar"), size=36)
         self.toggle_sidebar_btn.clicked.connect(self.toggleSidebarRequested.emit)
-        self.toggle_preview_btn = _icon_btn("\u25A6", "Toggle Preview", size=36)
-        self.toggle_preview_btn.clicked.connect(self.togglePreviewRequested.emit)
         right_layout.addWidget(self.toggle_sidebar_btn)
-        right_layout.addWidget(self.toggle_preview_btn)
         layout.addWidget(right_container, 1)
 
         self._shortcuts: dict[str, QShortcut] = {}
@@ -235,14 +232,12 @@ class TopbarNav(QFrame):
                 btn.setStyleSheet(btn_style)
         if not _HAS_FLUENT:
             self.toggle_sidebar_btn.setStyleSheet(btn_style)
-            self.toggle_preview_btn.setStyleSheet(btn_style)
         color = tokens.text_primary
         fluent_theme = _fluent_theme()
         if not _HAS_FLUENT:
             try:
                 if _HAS_QTAWESOME and qta:
                     self.toggle_sidebar_btn.setIcon(qta.icon("fa5s.bars", color=color))
-                    self.toggle_preview_btn.setIcon(qta.icon("fa5s.columns", color=color))
             except Exception:
                 pass
         if self._search_palette is not None:
@@ -375,18 +370,10 @@ class TopbarNav(QFrame):
         menu = RoundMenu(parent=self)
         self._file_actions.clear()
         items = [
-            ("import_excel", FluentIcon.FOLDER_ADD, tr("menu.file.import_excel"), self.importExcelRequested.emit),
-            ("export_excel", FluentIcon.DOCUMENT, tr("menu.file.export_excel"), self.exportExcelRequested.emit),
-            ("export_pdf", FluentIcon.DOCUMENT, tr("menu.file.export_pdf"), self.exportPdfRequested.emit),
-            None,
             ("recent", FluentIcon.HISTORY, tr("menu.file.recent"), self.recentImportsDialogRequested.emit),
             ("clear_history", FluentIcon.DELETE, tr("menu.file.clear_history"), self.clearImportHistoryRequested.emit),
         ]
-        for item in items:
-            if item is None:
-                menu.addSeparator()
-                continue
-            aid, icon, text, handler = item
+        for aid, icon, text, handler in items:
             action = Action(icon, text)
             action.triggered.connect(handler)
             menu.addAction(action)
@@ -396,18 +383,10 @@ class TopbarNav(QFrame):
     def _build_file_menu_qt(self, menu: QMenu) -> None:
         self._file_actions.clear()
         items = [
-            ("import_excel", tr("menu.file.import_excel"), self.importExcelRequested.emit),
-            ("export_excel", tr("menu.file.export_excel"), self.exportExcelRequested.emit),
-            ("export_pdf", tr("menu.file.export_pdf"), self.exportPdfRequested.emit),
-            None,
             ("recent", tr("menu.file.recent"), self.recentImportsDialogRequested.emit),
             ("clear_history", tr("menu.file.clear_history"), self.clearImportHistoryRequested.emit),
         ]
-        for item in items:
-            if item is None:
-                menu.addSeparator()
-                continue
-            aid, text, handler = item
+        for aid, text, handler in items:
             action = QAction(text, menu)
             if handler is not None:
                 action.triggered.connect(handler)

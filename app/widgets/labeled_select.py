@@ -4,6 +4,8 @@ from pathlib import Path
 from PyQt6.QtWidgets import QComboBox, QWidget, QHBoxLayout, QLabel
 from PyQt6.QtCore import Qt
 
+from app.widgets.form_controls import make_combo
+
 # From app/widgets, icon assets are at app/assets/icon
 _ASSETS = Path(__file__).resolve().parent.parent / "assets" / "icon"
 _ARROW_DOWN_ASSET = _ASSETS / "arrow-down.png"
@@ -58,8 +60,7 @@ def add_labeled_select_row(grid, row: int, label_text: str, combo, row_height: i
 
 def make_design_year_combo() -> QComboBox:
     """Create a reusable design-year select with 5-year interval options."""
-    combo = QComboBox()
-    combo.addItems([f"{year} year" for year in DESIGN_YEAR_OPTIONS])
+    combo = make_combo([f"{year} year" for year in DESIGN_YEAR_OPTIONS])
     return combo
 
 
@@ -69,7 +70,7 @@ class LabeledSelect(QWidget):
     def __init__(self, label_text: str, combo=None, row_height: int = 36, parent=None):
         super().__init__(parent)
         if combo is None:
-            combo = QComboBox()
+            combo = make_combo([])
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         combo.setMinimumHeight(row_height)

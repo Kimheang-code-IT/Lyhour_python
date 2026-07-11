@@ -35,6 +35,7 @@ class PreviewPanel(QFrame):
         self.preview_label.setScaledContents(False)
         self._set_default_preview_image()
         self.splitter.addWidget(self.preview_label)
+        self._preview_image_visible = True
 
         card = QFrame()
         card.setObjectName("quickResultsCard")
@@ -90,6 +91,19 @@ class PreviewPanel(QFrame):
                 return
         self._default_pixmap = None
         self._set_placeholder_image()
+
+    def show_preview_image(self) -> None:
+        self._preview_image_visible = True
+        self.preview_label.show()
+        if hasattr(self, "_default_pixmap") and self._default_pixmap and not self._default_pixmap.isNull():
+            self._update_preview_pixmap(self._default_pixmap)
+        else:
+            self._set_default_preview_image()
+
+    def hide_preview_image(self) -> None:
+        self._preview_image_visible = False
+        self.preview_label.hide()
+        self.splitter.setSizes([0, max(1, self.splitter.height())])
 
     def _set_placeholder_image(self):
         self._default_pixmap = None
@@ -150,6 +164,7 @@ class PreviewPanel(QFrame):
 
     def set_horizontal_curvature_schema(self):
         """Default schema: horizontal curvature quick results."""
+        self.show_preview_image()
         fields = [
             ("Minimum Radius", "Minimum radius R_min    ="),
             ("Minimum Radius from table", "Minimum radius from table ="),
@@ -161,6 +176,7 @@ class PreviewPanel(QFrame):
 
     def set_traffic_input_schema(self):
         """Schema used by Traffic Analysis Input page."""
+        self.show_preview_image()
         fields = [
             ("AADT", "AADT ="),
             ("PCU", "PCU ="),
@@ -179,7 +195,7 @@ class PreviewPanel(QFrame):
             ("Sro", "Sro ="),
             ("Curve length", "Curve length ="),
         ]
-        suffix_m = {"Transition Length Le", "Curve length"}
+        suffix_m = {"Transition Length Le", "Tro", "Sro", "Curve length"}
         self._set_schema(fields, suffix_m_keys=suffix_m)
 
     def set_results(self, results: dict | None):

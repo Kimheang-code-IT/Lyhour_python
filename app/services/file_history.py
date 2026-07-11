@@ -1,16 +1,11 @@
-"""Local Excel import history (metadata only, no workbook data)."""
+"""Session-only Excel import history (metadata only, no workbook data)."""
 from __future__ import annotations
 
-import json
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from pathlib import Path
+from dataclasses import dataclass
 
 from cachetools import LRUCache
-from loguru import logger
 
 _MAX_ENTRIES = 20
-_HISTORY_FILE = "excel_file_history.json"
 
 
 @dataclass
@@ -48,21 +43,14 @@ def format_recent_import_label(entry: FileHistoryEntry) -> str:
     return f"{entry.file_name} ({tr('file.recent.traffic')})"
 
 
-def _history_path() -> Path:
-    base = Path.home() / ".kiec_engineering"
-    base.mkdir(parents=True, exist_ok=True)
-    return base / _HISTORY_FILE
-
-
 class FileHistoryStore:
-    """Recent Excel imports on this machine (paths + timestamps only)."""
+    """Recent Excel imports for the current application session only."""
 
     _instance: FileHistoryStore | None = None
 
     def __init__(self) -> None:
         self._entries: list[FileHistoryEntry] = []
         self._lookup: LRUCache[str, FileHistoryEntry] = LRUCache(maxsize=_MAX_ENTRIES)
-        self.load()
 
     @classmethod
     def instance(cls) -> FileHistoryStore:
@@ -75,34 +63,16 @@ class FileHistoryStore:
         return list(self._entries)
 
     def load(self) -> list[FileHistoryEntry]:
-        path = _history_path()
-        if not path.is_file():
-            self._entries = []
-            self._lookup.clear()
-            return self._entries
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-            items = raw if isinstance(raw, list) else []
-            self._entries = [FileHistoryEntry.from_dict(item) for item in items[:_MAX_ENTRIES]]
-        except Exception as exc:
-            logger.warning("Could not load file history: {}", exc)
-            self._entries = []
-        self._lookup.clear()
-        for entry in self._entries:
-            self._lookup[entry.session_id] = entry
         return self._entries
 
     def save(self) -> None:
-        path = _history_path()
-        payload = [asdict(entry) for entry in self._entries[:_MAX_ENTRIES]]
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return None
 
     def add(self, entry: FileHistoryEntry) -> None:
         self._entries = [e for e in self._entries if e.session_id != entry.session_id]
         self._entries.insert(0, entry)
         self._entries = self._entries[:_MAX_ENTRIES]
         self._lookup[entry.session_id] = entry
-        self.save()
 
     def get(self, session_id: str) -> FileHistoryEntry | None:
         cached = self._lookup.get(session_id)
@@ -117,9 +87,7 @@ class FileHistoryStore:
     def remove(self, session_id: str) -> None:
         self._entries = [e for e in self._entries if e.session_id != session_id]
         self._lookup.pop(session_id, None)
-        self.save()
 
     def clear(self) -> None:
         self._entries = []
         self._lookup.clear()
-        self.save()

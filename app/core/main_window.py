@@ -72,6 +72,7 @@ from app.core.page_registry import (
 _PAGE_FACTORIES: list[Callable[[QWidget], QWidget]] = []
 _PAGES_WITHOUT_PREVIEW = TRAFFIC_PAGES
 _PAGES_WITH_FIXED_RIGHT_PANEL = FIXED_RIGHT_PANEL_PAGES
+_PAGES_WITH_QUICK_TOGGLE = TRAFFIC_PAGES | FIXED_RIGHT_PANEL_PAGES
 _RIGHT_PANEL_MIN_WIDTH = 400
 _RIGHT_PANEL_MAX_WIDTH = 430
 _RIGHT_PANEL_DEFAULT_MAX_WIDTH = 16777215
@@ -83,18 +84,8 @@ def _register_pages() -> None:
     _PAGE_FACTORIES.extend(build_page_factories())
 
 
-def _placeholder_page(title: str, description: str, parent: QWidget) -> QWidget:
-    page = QWidget(parent)
-    layout = QVBoxLayout(page)
-    layout.setContentsMargins(24, 24, 24, 24)
-    lbl = QLabel(title)
-    lbl.setStyleSheet("font-size: 22px; font-weight: bold;")
-    layout.addWidget(lbl)
-    desc = QLabel(description)
-    desc.setStyleSheet("color: #888;")
-    layout.addWidget(desc)
-    layout.addStretch()
-    return page
+def _placeholder_page(parent: QWidget) -> QWidget:
+    return QWidget(parent)
 
 
 class MainWindow(QMainWindow):
@@ -142,7 +133,7 @@ class MainWindow(QMainWindow):
         _register_pages()
         self._page_widgets: list[QWidget | None] = [None] * len(_PAGE_FACTORIES)
         for i in range(len(_PAGE_FACTORIES)):
-            self.stack.addWidget(_placeholder_page("Loading...", "", self))
+            self.stack.addWidget(_placeholder_page(self))
 
         self.splitter.addWidget(self.stack)
 
@@ -164,7 +155,8 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(content, 1)
 
         self._content = content
-        self._settings_busy_overlay = LoadingOverlay(content)
+        self._central = central
+        self._busy_overlay = LoadingOverlay(central)
         self._settings_applying = False
 
         self.calc_state = {"inputs": {}, "results": {}}
@@ -311,60 +303,83 @@ class MainWindow(QMainWindow):
         if path:
             self.import_excel_file(path)
 
-    def import_excel_file(self, path: str, *, count_hour: str | None = None) -> bool:
+    def show_app_loading(self, message: str, *, skeleton: bool = False) -> None:
+        self._busy_overlay.show_busy(message, skeleton=skeleton)
+        QApplication.processEvents()
+
+    def hide_app_loading(self) -> None:
+        self._busy_overlay.hide_busy()
+
+    def _run_with_loading(self, message: str, action: Callable, *, skeleton: bool = False):
+        self.show_app_loading(message, skeleton=skeleton)
         try:
-            result = self._excel_io.import_traffic_workbook(
-                path,
-                count_hour=count_hour or self._active_count_hour(),
-            )
-        except Exception as exc:
-            logger.exception("Excel import failed")
-            QMessageBox.warning(self, tr("menu.file.import_excel"), f"{tr('file.import.failed')}\n{exc}")
-            return False
+            return action()
+        finally:
+            self.hide_app_loading()
 
-        data = self._excel_io.load_session(result.session_id)
-        if not data:
-            QMessageBox.warning(self, tr("menu.file.import_excel"), tr("file.import.failed"))
-            return False
+    def import_excel_file(self, path: str, *, count_hour: str | None = None) -> bool:
+        def _do_import() -> bool:
+            try:
+                result = self._excel_io.import_traffic_workbook(
+                    path,
+                    count_hour=count_hour or self._active_count_hour(),
+                )
+            except Exception as exc:
+                logger.exception("Excel import failed")
+                QMessageBox.warning(self, tr("menu.file.import_excel"), f"{tr('file.import.failed')}\n{exc}")
+                return False
 
-        self._active_excel_session = result.session_id
-        self._open_excel_tab(result.session_id)
-        self.set_traffic_excel_data(data)
-        self.refresh_file_tabs()
-        self._navigate_to_traffic_input()
-        self.statusBar().showMessage(tr("file.import.ok").format(name=result.file_name), 5000)
-        return True
+            data = self._excel_io.load_session(result.session_id)
+            if not data:
+                QMessageBox.warning(self, tr("menu.file.import_excel"), tr("file.import.failed"))
+                return False
+
+            self._active_excel_session = result.session_id
+            self._open_excel_tab(result.session_id)
+            self.set_traffic_excel_data(data)
+            self.refresh_file_tabs()
+            self._navigate_to_traffic_input()
+            self.statusBar().showMessage(tr("file.import.ok").format(name=result.file_name), 5000)
+            return True
+
+        return bool(self._run_with_loading(tr("loading.import"), _do_import))
 
     def import_tld_file(self, path: str) -> bool:
-        try:
-            result = self._tld_io.import_tld_workbook(path)
-        except Exception as exc:
-            logger.exception("TLD import failed")
-            QMessageBox.warning(self, "Read TLD Excel", f"Could not read TLD data:\n{exc}")
-            return False
+        def _do_import() -> bool:
+            try:
+                result = self._tld_io.import_tld_workbook(path)
+            except Exception as exc:
+                logger.exception("TLD import failed")
+                QMessageBox.warning(self, "Read TLD Excel", f"Could not read TLD data:\n{exc}")
+                return False
 
-        data = self._tld_io.load_session(result.session_id)
-        if not data:
-            QMessageBox.warning(self, "Read TLD Excel", tr("file.import.failed"))
-            return False
+            data = self._tld_io.load_session(result.session_id)
+            if not data:
+                QMessageBox.warning(self, "Read TLD Excel", tr("file.import.failed"))
+                return False
 
-        self._active_tld_session = result.session_id
-        self.set_tld_excel_data(data)
-        self._present_tld_import(data)
-        self._navigate_to_traffic_esal()
-        self.statusBar().showMessage(tr("file.tld.import.ok").format(name=result.file_name), 5000)
-        return True
+            self._active_tld_session = result.session_id
+            self.set_tld_excel_data(data)
+            self._present_tld_import(data)
+            self._navigate_to_traffic_esal()
+            self.statusBar().showMessage(tr("file.tld.import.ok").format(name=result.file_name), 5000)
+            return True
+
+        return bool(self._run_with_loading(tr("loading.import"), _do_import))
 
     def activate_tld_session(self, session_id: str) -> None:
-        data = self._tld_io.load_session(session_id)
-        if not data:
-            QMessageBox.information(self, "Read TLD Excel", tr("file.session.missing"))
-            self.remove_import(session_id)
-            return
-        self._active_tld_session = str(data.get("session_id") or session_id)
-        self.set_tld_excel_data(data)
-        self._present_tld_import(data)
-        self._navigate_to_traffic_esal()
+        def _do_activate() -> None:
+            data = self._tld_io.load_session(session_id)
+            if not data:
+                QMessageBox.information(self, "Read TLD Excel", tr("file.session.missing"))
+                self.remove_import(session_id)
+                return
+            self._active_tld_session = str(data.get("session_id") or session_id)
+            self.set_tld_excel_data(data)
+            self._present_tld_import(data)
+            self._navigate_to_traffic_esal()
+
+        self._run_with_loading(tr("loading.data"), _do_activate)
 
     def _present_tld_import(self, data: dict) -> None:
         source_path = str(data.get("source_path") or "")
@@ -388,19 +403,23 @@ class MainWindow(QMainWindow):
         if entry is not None and entry.is_tld:
             self.activate_tld_session(session_id)
             return
-        data = self._excel_io.load_session(session_id)
-        if not data:
-            QMessageBox.information(self, tr("menu.file.import_excel"), tr("file.session.missing"))
-            self.close_excel_session(session_id)
-            return
-        effective_id = str(data.get("session_id") or session_id)
-        if effective_id != session_id and session_id in self._open_excel_sessions:
-            self._open_excel_sessions.remove(session_id)
-        self._active_excel_session = effective_id
-        self._open_excel_tab(effective_id)
-        self.set_traffic_excel_data(data)
-        self.refresh_file_tabs()
-        self._navigate_to_traffic_input()
+
+        def _do_activate() -> None:
+            data = self._excel_io.load_session(session_id)
+            if not data:
+                QMessageBox.information(self, tr("menu.file.import_excel"), tr("file.session.missing"))
+                self.close_excel_session(session_id)
+                return
+            effective_id = str(data.get("session_id") or session_id)
+            if effective_id != session_id and session_id in self._open_excel_sessions:
+                self._open_excel_sessions.remove(session_id)
+            self._active_excel_session = effective_id
+            self._open_excel_tab(effective_id)
+            self.set_traffic_excel_data(data)
+            self.refresh_file_tabs()
+            self._navigate_to_traffic_input()
+
+        self._run_with_loading(tr("loading.data"), _do_activate)
 
     def close_excel_session(self, session_id: str) -> None:
         self._excel_io.close_session(session_id)
@@ -513,8 +532,7 @@ class MainWindow(QMainWindow):
         if self._settings_applying:
             return
         self._settings_applying = True
-        self._settings_busy_overlay.show_busy(tr("settings.applying"))
-        QApplication.processEvents()
+        self.show_app_loading(tr("settings.applying"))
         QTimer.singleShot(0, self._finish_settings_apply)
 
     def _finish_settings_apply(self) -> None:
@@ -522,7 +540,7 @@ class MainWindow(QMainWindow):
             self._apply_saved_settings(apply_workspace=True)
             self.statusBar().showMessage(tr("settings.apply.ok"), 4000)
         finally:
-            self._settings_busy_overlay.hide_busy()
+            self.hide_app_loading()
             self._settings_applying = False
             self.settingsApplyFinished.emit()
 
@@ -570,7 +588,7 @@ class MainWindow(QMainWindow):
             return
         self._ensure_page(index)
         self.stack.setCurrentIndex(index)
-        if index not in _PAGES_WITHOUT_PREVIEW:
+        if index not in _PAGES_WITH_QUICK_TOGGLE:
             self._quick_panel_visible = False
         self._apply_preview_visibility(index)
         self.nav.set_current_index(index)
@@ -583,8 +601,10 @@ class MainWindow(QMainWindow):
             return
 
         if index == TRAFFIC_INPUT:
+            self.quick_panel.set_traffic_schema()
             self.refresh_traffic_quick_results()
         elif index == TRAFFIC_ANALYSIS:
+            self.quick_panel.set_traffic_schema()
             self._refresh_traffic_analysis_views()
         elif hasattr(page, "activate_page"):
             page.activate_page()
@@ -597,6 +617,7 @@ class MainWindow(QMainWindow):
         )
         self._apply_pending_road_classification()
         self._apply_pending_lane_projection()
+        self.refresh_lane_los_context()
         self._apply_pending_esal_result()
         self._apply_pending_aadt_pcu_result()
         self.refresh_traffic_quick_results()
@@ -605,14 +626,20 @@ class MainWindow(QMainWindow):
         if index is None:
             index = self.stack.currentIndex()
         is_traffic_page = index in _PAGES_WITHOUT_PREVIEW
-        if index in _PAGES_WITH_FIXED_RIGHT_PANEL:
-            self.preview_panel.setMinimumWidth(_RIGHT_PANEL_MIN_WIDTH)
-            self.preview_panel.setMaximumWidth(_RIGHT_PANEL_MAX_WIDTH)
+        is_fixed_results_page = index in _PAGES_WITH_FIXED_RIGHT_PANEL
+
+        if is_fixed_results_page:
+            self.preview_panel.hide()
+        elif is_traffic_page:
+            self.preview_panel.hide()
         else:
             self.preview_panel.setMinimumWidth(120)
             self.preview_panel.setMaximumWidth(_RIGHT_PANEL_DEFAULT_MAX_WIDTH)
-        self.preview_panel.setVisible(self._preview_visible and not is_traffic_page)
-        self.quick_panel.setVisible(is_traffic_page and self._quick_panel_visible)
+            self.preview_panel.setVisible(self._preview_visible)
+
+        show_quick = index in _PAGES_WITH_QUICK_TOGGLE and self._quick_panel_visible
+        self.quick_panel.setVisible(show_quick)
+
         if 0 <= index < len(self._page_widgets):
             page = self._page_widgets[index]
             if page is not None and hasattr(page, "sync_quick_panel_button"):
@@ -655,7 +682,7 @@ class MainWindow(QMainWindow):
         return self.is_quick_panel_visible()
 
     def is_quick_panel_visible(self) -> bool:
-        return self.stack.currentIndex() in _PAGES_WITHOUT_PREVIEW and self._quick_panel_visible
+        return self.stack.currentIndex() in _PAGES_WITH_QUICK_TOGGLE and self._quick_panel_visible
 
     @property
     def traffic_input_page(self):
@@ -682,6 +709,7 @@ class MainWindow(QMainWindow):
             projected_aadt,
             projected_pcu,
         )
+        self.refresh_lane_los_context()
         self.refresh_traffic_quick_results()
 
     def refresh_traffic_quick_results(self) -> None:
@@ -945,7 +973,24 @@ class MainWindow(QMainWindow):
         detail_page = self._page_widgets[1]
         if detail_page is not None and hasattr(detail_page, "set_lane_projection"):
             detail_page.set_lane_projection(result)
+        self.refresh_lane_los_context()
         self.refresh_traffic_quick_results()
+
+    def refresh_lane_los_context(self) -> None:
+        traffic_state = self.calc_state.setdefault("traffic_analysis", {})
+        road_classification = traffic_state.get("road_classification")
+        selected_los = "A"
+        input_page = self._page_widgets[0]
+        if input_page is not None and hasattr(input_page, "active_los"):
+            selected_los = input_page.active_los()
+        detail_page = self._page_widgets[1]
+        if detail_page is not None and hasattr(detail_page, "set_lane_los_context"):
+            detail_page.set_lane_los_context(road_classification, selected_los)
+
+    def sync_input_los_from_lane_page(self, los: str) -> None:
+        input_page = self._page_widgets[0]
+        if input_page is not None and hasattr(input_page, "set_active_los"):
+            input_page.set_active_los(los)
 
     def set_traffic_count_rows(self, rows: list[list]) -> None:
         traffic_state = self.calc_state.setdefault("traffic_analysis", {})

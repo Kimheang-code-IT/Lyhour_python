@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import QApplication, QFrame, QSizePolicy, QVBoxLayout
 
 from qfluentwidgets import NavigationInterface, NavigationItemPosition
 from qfluentwidgets.components.navigation.navigation_widget import NavigationTreeWidget, NavigationWidget
-from qfluentwidgets.components.widgets.scroll_bar import ScrollBarHandleDisplayMode
 
 from app.core.i18n import nav_label
 from app.core.nav_icons import nav_icon
@@ -27,6 +26,7 @@ from app.core.page_registry import (
     RGD_HORIZONTAL_CURVATURE,
     RGD_SUPERELEVATION,
     RGD_VERTICAL_CURVE,
+    RGD_SUBGRADE_DESIGN,
     TRAFFIC_ANALYSIS,
     TRAFFIC_INPUT,
 )
@@ -131,10 +131,9 @@ class SidebarLeft(QFrame):
         panel.vBoxLayout.setContentsMargins(0, 0, 0, 0)
 
         scroll = panel.scrollArea
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidgetResizable(True)
-        scroll.scrollDelagate.vScrollBar.setHandleDisplayMode(ScrollBarHandleDisplayMode.ON_HOVER)
 
         menu_font = QFont()
         menu_font.setPointSize(10)
@@ -229,6 +228,14 @@ class SidebarLeft(QFrame):
             text=nav_label("rgd_vertical_curve"),
             page_index=RGD_VERTICAL_CURVE,
             parent_route_key="road_geometry_design",
+        )
+
+        self.navigation.addItem(
+            routeKey="rgd_subgrade_design",
+            icon=nav_icon("rgd_subgrade_design"),
+            text=nav_label("rgd_subgrade_design"),
+            onClick=lambda *_args: self._navigate_to(RGD_SUBGRADE_DESIGN),
+            position=scroll,
         )
 
         self._add_folder(

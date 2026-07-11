@@ -13,18 +13,24 @@ RGD_CROSS_SECTION = 2
 RGD_HORIZONTAL_CURVATURE = 3
 RGD_SUPERELEVATION = 4
 RGD_VERTICAL_CURVE = 5
-FLEXIBLE_PAVEMENT = 6
-RIGID_PAVEMENT = 7
-MATERIAL_DESIGN = 8
-PAVEMENT_EVALUATION = 9
-INTERSECTION_TAPER = 10
-INTERSECTION_ACCELERATIONS = 11
-INTERSECTION_DECELERATIONS = 12
+RGD_SUBGRADE_DESIGN = 6
+FLEXIBLE_PAVEMENT = 7
+RIGID_PAVEMENT = 8
+MATERIAL_DESIGN = 9
+PAVEMENT_EVALUATION = 10
+INTERSECTION_TAPER = 11
+INTERSECTION_ACCELERATIONS = 12
+INTERSECTION_DECELERATIONS = 13
 
-PAGE_COUNT = 13
+PAGE_COUNT = 14
 
 TRAFFIC_PAGES = frozenset({TRAFFIC_INPUT, TRAFFIC_ANALYSIS})
-FIXED_RIGHT_PANEL_PAGES = frozenset({RGD_HORIZONTAL_CURVATURE, RGD_SUPERELEVATION})
+FIXED_RIGHT_PANEL_PAGES = frozenset({
+    RGD_HORIZONTAL_CURVATURE,
+    RGD_SUPERELEVATION,
+    RGD_SUBGRADE_DESIGN,
+    FLEXIBLE_PAVEMENT,
+})
 
 ROUTE_TO_PAGE: dict[str, int] = {
     "traffic_input": TRAFFIC_INPUT,
@@ -33,6 +39,7 @@ ROUTE_TO_PAGE: dict[str, int] = {
     "rgd_horizontal_curvature": RGD_HORIZONTAL_CURVATURE,
     "rgd_superelevation_design": RGD_SUPERELEVATION,
     "rgd_vertical_curve": RGD_VERTICAL_CURVE,
+    "rgd_subgrade_design": RGD_SUBGRADE_DESIGN,
     "flexible_pavement": FLEXIBLE_PAVEMENT,
     "rigid_pavement": RIGID_PAVEMENT,
     "material_design": MATERIAL_DESIGN,
@@ -50,9 +57,10 @@ PAGE_LAYOUTS: dict[int, str] = {
     TRAFFIC_ANALYSIS: "blank",
     RGD_CROSS_SECTION: "default",
     RGD_HORIZONTAL_CURVATURE: "blank",
-    RGD_SUPERELEVATION: "scroll",
+    RGD_SUPERELEVATION: "blank",
     RGD_VERTICAL_CURVE: "default",
-    FLEXIBLE_PAVEMENT: "default",
+    RGD_SUBGRADE_DESIGN: "blank",
+    FLEXIBLE_PAVEMENT: "blank",
     RIGID_PAVEMENT: "default",
     MATERIAL_DESIGN: "default",
     PAVEMENT_EVALUATION: "default",
@@ -90,6 +98,7 @@ SEARCH_PAGES: tuple[SearchPageEntry, ...] = (
     SearchPageEntry("rgd_horizontal_curvature", "road_geometry_design", RGD_HORIZONTAL_CURVATURE),
     SearchPageEntry("rgd_superelevation_design", "road_geometry_design", RGD_SUPERELEVATION),
     SearchPageEntry("rgd_vertical_curve", "road_geometry_design", RGD_VERTICAL_CURVE),
+    SearchPageEntry("rgd_subgrade_design", "rgd_subgrade_design", RGD_SUBGRADE_DESIGN),
     SearchPageEntry("flexible_pavement", "pavement_material_design", FLEXIBLE_PAVEMENT),
     SearchPageEntry("rigid_pavement", "pavement_material_design", RIGID_PAVEMENT),
     SearchPageEntry("material_design", "pavement_material_design", MATERIAL_DESIGN),
@@ -108,6 +117,7 @@ def build_page_factories() -> list[Callable[[QWidget], QWidget]]:
     from app.pages.RGD_Horizontal_Curvature import RGDHorizontalCurvaturePage
     from app.pages.RGD_Superelevation_Design import RGDSuperelevationDesignPage
     from app.pages.RGD_Vertical_Curve import RGDVerticalCurvePage
+    from app.pages.RGD_Subgrade_Design import RGDSubgradeDesignPage
     from app.pages.Flexible_Pavement import FlexiblePavementPage
     from app.pages.Rigid_Pavement import RigidPavementPage
     from app.pages.Material_Design import MaterialDesignPage
@@ -123,6 +133,7 @@ def build_page_factories() -> list[Callable[[QWidget], QWidget]]:
         lambda p: RGDHorizontalCurvaturePage(p),
         lambda p: RGDSuperelevationDesignPage(p),
         lambda p: RGDVerticalCurvePage(p),
+        lambda p: RGDSubgradeDesignPage(p),
         lambda p: FlexiblePavementPage(p),
         lambda p: RigidPavementPage(p),
         lambda p: MaterialDesignPage(p),

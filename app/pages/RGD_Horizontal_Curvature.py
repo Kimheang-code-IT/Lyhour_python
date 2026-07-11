@@ -16,7 +16,9 @@ from app.data.tables_Horizontal_Curvature import (
     get_f_options_for_table_7_5,
 )
 from app.services import pdf_preview as pdf_preview_svc
+from app.core.ui_style import section_title_style, title_style
 from app.widgets.labeled_input import add_labeled_row
+from app.widgets.scroll_utils import configure_hidden_scrollbars
 from app.widgets.button import primary_button, secondary_button
 
 from PyQt6.QtWidgets import (
@@ -39,6 +41,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtCore import Qt
 
+from app.data.simple_curve_geometry import (
+    compute_simple_curve_elements,
+    draw_simple_curve_diagram,
+)
+from app.widgets.chart_ui import MatplotlibChartWidget
 from app.widgets.form_controls import make_combo, make_double_spin
 
 
@@ -48,16 +55,11 @@ except Exception:
     APP_NAME = "Report"
 
 
-try:
-    from qfluentwidgets import SubtitleLabel
-    _HAS_FLUENT = True
-except Exception:
-    SubtitleLabel = None  # type: ignore[assignment]
-    _HAS_FLUENT = False
-
-
 # Vehicle speed options (km/h) — discrete values per Table 7.5 / 7.6
 VEHICLE_SPEED_OPTIONS = [25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
+ROW_HEIGHT = 36
+BLOCK_SPACING = 24
+SECTION_TITLE_STYLE = section_title_style(18)
 
 # Friction factor type → hint text shown next to combo
 FRICTION_HINTS = {
@@ -106,6 +108,22 @@ class RGDHorizontalCurvaturePage(QWidget):
         self.stack = QStackedWidget(self)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(24, 24, 24, 0)
+        title_row.setSpacing(12)
+        self._page_title = QLabel("Horizontal Curvature")
+        self._page_title.setStyleSheet(title_style(22))
+        title_row.addWidget(self._page_title)
+        title_row.addStretch()
+        self.preview_pdf_btn = secondary_button("Preview PDF", min_height=36)
+        self.preview_pdf_btn.clicked.connect(self._show_pdf_preview)
+        title_row.addWidget(self.preview_pdf_btn)
+        self.quick_panel_btn = secondary_button("Show Quick Result", min_height=36)
+        self.quick_panel_btn.clicked.connect(self._toggle_quick_panel)
+        title_row.addWidget(self.quick_panel_btn)
+        layout.addLayout(title_row)
+
         layout.addWidget(self.stack)
 
         # -------------------------
@@ -114,19 +132,13 @@ class RGDHorizontalCurvaturePage(QWidget):
         form_page = QWidget()
         form_layout = QVBoxLayout(form_page)
         form_layout.setContentsMargins(24, 24, 24, 24)
-
-        # Section title — Fluent SubtitleLabel when available
-        if _HAS_FLUENT and SubtitleLabel is not None:
-            title = SubtitleLabel("Input")
-        else:
-            title = QLabel("Input")
-            title.setStyleSheet("font-size: 22px; font-weight: bold;")
-        form_layout.addWidget(title)
+        form_layout.setSpacing(12)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        configure_hidden_scrollbars(scroll)
 
         form_widget = QFrame()
         form_widget.setObjectName("inputSectionFrame")
@@ -135,15 +147,21 @@ class RGDHorizontalCurvaturePage(QWidget):
         )
         form_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
 
-        form_grid = QGridLayout(form_widget)
+        input_layout = QVBoxLayout(form_widget)
+        input_layout.setContentsMargins(16, 12, 16, 16)
+        input_layout.setSpacing(12)
+
+        self.input_title = QLabel("Input")
+        self.input_title.setStyleSheet(SECTION_TITLE_STYLE)
+        input_layout.addWidget(self.input_title)
+
+        fields_host = QWidget()
+        form_grid = QGridLayout(fields_host)
         form_grid.setHorizontalSpacing(12)
         form_grid.setVerticalSpacing(14)
-        form_grid.setContentsMargins(16, 12, 16, 16)
+        form_grid.setContentsMargins(0, 0, 0, 0)
 
         row = 0
-        ROW_HEIGHT = 36
-
-        # Vehicle Speed (dropdown: 25 km/h, 30 km/h, ..., 130 km/h)
         speed_items = [f"{s} km/h" for s in VEHICLE_SPEED_OPTIONS]
         self.v_combo = make_combo(speed_items, editable=False)
         self.v_combo.setCurrentIndex(speed_items.index("90 km/h"))  # default 90 km/h
@@ -212,18 +230,74 @@ class RGDHorizontalCurvaturePage(QWidget):
         row += 1
 
         form_grid.setColumnStretch(1, 1)
+        input_layout.addWidget(fields_host)
 
-        scroll.setWidget(form_widget)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(BLOCK_SPACING)
+        scroll_layout.addWidget(form_widget)
+
+        # -------------------------
+        # Design block
+        # -------------------------
+        design_widget = QFrame()
+        design_widget.setObjectName("designSectionFrame")
+        design_widget.setStyleSheet(
+            "#designSectionFrame { background-color: transparent; border: 1px solid #3e3e40; border-radius: 6px; }"
+        )
+        design_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+
+        design_layout = QVBoxLayout(design_widget)
+        design_layout.setContentsMargins(16, 12, 16, 16)
+        design_layout.setSpacing(12)
+
+        self.design_title = QLabel("Design")
+        self.design_title.setStyleSheet(SECTION_TITLE_STYLE)
+        design_layout.addWidget(self.design_title)
+
+        design_grid = QGridLayout()
+        design_grid.setHorizontalSpacing(12)
+        design_grid.setVerticalSpacing(14)
+
+        design_row = 0
+
+        self.design_radius_spin = make_double_spin()
+        self.design_radius_spin.setRange(1.0, 50_000.0)
+        self.design_radius_spin.setDecimals(3)
+        self.design_radius_spin.setSuffix(" m")
+        self.design_radius_spin.setValue(400.0)
+        self.design_radius_spin.setToolTip("Curve radius R")
+        self.design_radius_spin.valueChanged.connect(self._on_design_changed)
+        add_labeled_row(design_grid, design_row, "Radius R =", self.design_radius_spin, ROW_HEIGHT)
+        design_row += 1
+
+        self.design_deflection_spin = make_double_spin()
+        self.design_deflection_spin.setRange(0.01, 179.99)
+        self.design_deflection_spin.setDecimals(4)
+        self.design_deflection_spin.setSuffix(" °")
+        self.design_deflection_spin.setValue(79.0 + 14.0 / 60.0 + 55.17 / 3600.0)
+        self.design_deflection_spin.setToolTip("Deflection angle Δ at PI")
+        self.design_deflection_spin.valueChanged.connect(self._on_design_changed)
+        add_labeled_row(design_grid, design_row, "Deflection angle Δ =", self.design_deflection_spin, ROW_HEIGHT)
+        design_row += 1
+
+        design_grid.setColumnStretch(1, 1)
+        design_layout.addLayout(design_grid)
+
+        self.design_summary_label = QLabel("")
+        self.design_summary_label.setWordWrap(True)
+        self.design_summary_label.setStyleSheet("color: #cccccc; font-size: 13px; padding: 4px 0;")
+        design_layout.addWidget(self.design_summary_label)
+
+        self.design_chart = MatplotlibChartWidget(figsize=(8.5, 5.5))
+        self.design_chart.setMinimumHeight(380)
+        design_layout.addWidget(self.design_chart, 1)
+
+        scroll_layout.addWidget(design_widget, 1)
+
+        scroll.setWidget(scroll_content)
         form_layout.addWidget(scroll, 1)
-
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(12)
-
-        preview_pdf_btn = secondary_button("Preview PDF")
-        preview_pdf_btn.clicked.connect(self._show_pdf_preview)
-        btn_row.addWidget(preview_pdf_btn)
-
-        form_layout.addLayout(btn_row)
 
         # -------------------------
         # Page 1: PDF Preview
@@ -234,6 +308,58 @@ class RGDHorizontalCurvaturePage(QWidget):
         self.stack.addWidget(self.pdf_preview_page)
 
         self._on_input_changed()
+        self._refresh_design_chart()
+
+    # -------------------------
+    # Design block
+    # -------------------------
+    def _on_design_changed(self) -> None:
+        self._refresh_design_chart()
+
+    def _refresh_design_chart(self) -> None:
+        radius = float(self.design_radius_spin.value())
+        deflection = float(self.design_deflection_spin.value())
+        elements = compute_simple_curve_elements(radius, deflection)
+
+        if elements is None:
+            self.design_summary_label.setText("Enter radius R > 0 and deflection angle 0° < Δ < 180°.")
+            if self.design_chart.figure is not None:
+                self.design_chart.clear()
+            return
+
+        self.design_summary_label.setText(
+            "TL = {:.3f} m   |   L = {:.3f} m   |   C = {:.3f} m   |   "
+            "E = {:.3f} m   |   M = {:.3f} m".format(
+                elements.tangent_length_m,
+                elements.curve_length_m,
+                elements.chord_length_m,
+                elements.external_distance_m,
+                elements.middle_ordinate_m,
+            )
+        )
+
+        if self.design_chart.figure is None:
+            return
+
+        self.design_chart.figure.clear()
+        ax = self.design_chart.add_subplot(111)
+        draw_simple_curve_diagram(ax, elements)
+        self.design_chart.canvas.draw()
+
+    def _sync_design_radius_from_results(self) -> None:
+        r_calc = self._results.get("Minimum Radius")
+        if r_calc is None:
+            return
+        try:
+            value = float(r_calc)
+        except (TypeError, ValueError):
+            return
+        if value <= 0:
+            return
+        self.design_radius_spin.blockSignals(True)
+        self.design_radius_spin.setValue(round(value, 3))
+        self.design_radius_spin.blockSignals(False)
+        self._refresh_design_chart()
 
     # -------------------------
     # UI: PDF Preview Page
@@ -269,6 +395,7 @@ class RGDHorizontalCurvaturePage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        configure_hidden_scrollbars(scroll)
         scroll.setWidget(self.pdf_preview_label)
 
         layout.addWidget(scroll, 1)
@@ -280,6 +407,26 @@ class RGDHorizontalCurvaturePage(QWidget):
     def showEvent(self, event: QShowEvent):
         super().showEvent(event)
         self._on_input_changed()
+        self._refresh_design_chart()
+        self._sync_quick_panel_button()
+
+    def activate_page(self) -> None:
+        self._push_to_quick_panel_and_state()
+        self._sync_quick_panel_button()
+
+    def _toggle_quick_panel(self) -> None:
+        mw = self.window()
+        if hasattr(mw, "toggle_quick_panel"):
+            self.sync_quick_panel_button(mw.toggle_quick_panel())
+
+    def sync_quick_panel_button(self, visible: bool | None = None) -> None:
+        if visible is None:
+            mw = self.window()
+            visible = hasattr(mw, "is_quick_panel_visible") and mw.is_quick_panel_visible()
+        self.quick_panel_btn.setText("Hide Quick Result" if visible else "Show Quick Result")
+
+    def _sync_quick_panel_button(self) -> None:
+        self.sync_quick_panel_button()
 
     def _on_surface_changed(self, surface_text: str):
         """Update Vehicle Type and Friction factor type options based on Surface Type."""
@@ -385,6 +532,7 @@ class RGDHorizontalCurvaturePage(QWidget):
             "Verification": verification,
             "Minimum radius on grade R_min_ongrade": r_min_ongrade,
         }
+        self._sync_design_radius_from_results()
         self._push_to_preview_and_state()
 
     # -------------------------
@@ -524,18 +672,15 @@ class RGDHorizontalCurvaturePage(QWidget):
 
         self._on_input_changed()
 
-    def _push_to_preview_and_state(self):
+    def _push_to_quick_panel_and_state(self):
         mw = self.window()
-        if not hasattr(mw, "preview_panel"):
-            return
-
-        try:
-            # Ensure quick results card shows horizontal curvature schema
-            if hasattr(mw.preview_panel, "set_horizontal_curvature_schema"):
-                mw.preview_panel.set_horizontal_curvature_schema()
-            mw.preview_panel.set_results(self._results)
-        except Exception:
-            pass
+        if hasattr(mw, "quick_panel"):
+            try:
+                if hasattr(mw.quick_panel, "set_horizontal_curvature_schema"):
+                    mw.quick_panel.set_horizontal_curvature_schema()
+                mw.quick_panel.set_results(self._results)
+            except Exception:
+                pass
 
         if hasattr(mw, "calc_state"):
             try:
@@ -543,3 +688,6 @@ class RGDHorizontalCurvaturePage(QWidget):
                 mw.calc_state["results"] = self._results.copy()
             except Exception:
                 pass
+
+    def _push_to_preview_and_state(self):
+        self._push_to_quick_panel_and_state()

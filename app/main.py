@@ -4,6 +4,8 @@ import sys
 
 # Suppress libpng iCCP warning when loading PNGs (e.g. KIEC_logo.png with old sRGB profile)
 os.environ.setdefault("QT_LOGGING_RULES", "qt.gui.imageio.warning=false")
+# Use Qt backend before any matplotlib import (charts + frozen exe)
+os.environ.setdefault("MPLBACKEND", "QtAgg")
 
 from pathlib import Path
 
@@ -53,7 +55,11 @@ def main():
     if logo_path is not None:
         window.setWindowIcon(QIcon(str(logo_path)))
     window.showMaximized()
-    sys.exit(app.exec())
+    try:
+        sys.exit(app.exec())
+    except KeyboardInterrupt:
+        # Ctrl+C in terminal while the Qt event loop is running
+        sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,13 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDoubleValidator, QIntValidator
 from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLineEdit, QRadioButton, QSpinBox
 
+
+class _NoWheelMixin:
+    """Ignore mouse wheel so values change only by direct typing or selection."""
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        event.ignore()
+
 try:
     from qfluentwidgets import (
         ComboBox as FluentComboBox,
@@ -23,13 +30,49 @@ except Exception:
     _HAS_FLUENT = False
 
 
+if _HAS_FLUENT and FluentDoubleSpinBox is not None:
+    class _NoWheelDoubleSpinBox(_NoWheelMixin, FluentDoubleSpinBox):  # type: ignore[misc,valid-type]
+        pass
+else:
+    class _NoWheelDoubleSpinBox(_NoWheelMixin, QDoubleSpinBox):
+        pass
+
+
+if _HAS_FLUENT and FluentComboBox is not None:
+    class _NoWheelComboBox(_NoWheelMixin, FluentComboBox):  # type: ignore[misc,valid-type]
+        pass
+else:
+    class _NoWheelComboBox(_NoWheelMixin, QComboBox):
+        pass
+
+
+if _HAS_FLUENT and FluentEditableComboBox is not None:
+    class _NoWheelEditableComboBox(_NoWheelMixin, FluentEditableComboBox):  # type: ignore[misc,valid-type]
+        pass
+else:
+    _NoWheelEditableComboBox = _NoWheelComboBox
+
+
+if _HAS_FLUENT and FluentLineEdit is not None:
+    class _NoWheelLineEdit(_NoWheelMixin, FluentLineEdit):  # type: ignore[misc,valid-type]
+        pass
+else:
+    class _NoWheelLineEdit(_NoWheelMixin, QLineEdit):
+        pass
+
+
+def disable_wheel_on_input(widget):
+    """Prevent mouse wheel from changing a control; wheel scrolls the parent instead."""
+    widget.wheelEvent = _NoWheelMixin.wheelEvent.__get__(widget, type(widget))  # type: ignore[method-assign]
+    return widget
+
+
 def make_double_spin() -> QDoubleSpinBox:
     """Numeric input without increment/decrement icons."""
-    if _HAS_FLUENT and FluentDoubleSpinBox is not None:
-        widget = FluentDoubleSpinBox()
+    widget = _NoWheelDoubleSpinBox()
+    if _HAS_FLUENT and FluentDoubleSpinBox is not None and isinstance(widget, FluentDoubleSpinBox):
         widget.setSymbolVisible(False)
     else:
-        widget = QDoubleSpinBox()
         widget.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
     return widget
 
@@ -40,18 +83,18 @@ def make_spin_no_buttons(widget):
         widget.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
     else:
         widget.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
-    return widget
+    return disable_wheel_on_input(widget)
 
 
 def make_combo(items, *, editable: bool = False):
     """Create a combo with Fluent style when available."""
     if _HAS_FLUENT:
         if editable and FluentEditableComboBox is not None:
-            combo = FluentEditableComboBox()
+            combo = _NoWheelEditableComboBox()
         else:
-            combo = FluentComboBox() if FluentComboBox is not None else QComboBox()
+            combo = _NoWheelComboBox()
     else:
-        combo = QComboBox()
+        combo = _NoWheelComboBox()
 
     try:
         combo.setEditable(bool(editable) if isinstance(combo, QComboBox) else False)
@@ -108,9 +151,7 @@ def make_radio(text: str = "", *, checked: bool = False) -> QRadioButton:
 
 
 def _make_line_edit() -> QLineEdit:
-    if _HAS_FLUENT and FluentLineEdit is not None:
-        return FluentLineEdit()
-    return QLineEdit()
+    return _NoWheelLineEdit()
 
 
 def make_integer_line_edit(*, minimum: int = 0, maximum: int = 9_999_999) -> QLineEdit:

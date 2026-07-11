@@ -27,6 +27,7 @@ from app.services.excel_io import ExcelIOService
 from app.data.area_type import AREA_TYPE_OPTIONS, DEFAULT_AREA_TYPE
 from app.widgets.labeled_input import add_labeled_row
 from app.widgets.button import secondary_button
+from app.widgets.scroll_utils import configure_hidden_scrollbars
 from app.widgets.traffic_results import refresh_theme_widgets
 
 try:
@@ -40,7 +41,7 @@ except Exception:
 TRAFFIC_COUNT_HOURS = ["12h", "24h"]
 AREA_TYPE_COMBO_OPTIONS = list(AREA_TYPE_OPTIONS)
 DESIGN_YEAR_OPTIONS = [f"{v} year" for v in (5, 10, 15, 20, 25, 30, 35, 40)]
-LOS_OPTIONS = ["A", "B", "C", "D", "E", "F"]
+from app.data.level_of_service import LOS_OPTIONS
 
 ROW_HEIGHT = 36
 
@@ -121,6 +122,7 @@ class TrafficAnalysisInputPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        configure_hidden_scrollbars(scroll)
 
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
@@ -232,6 +234,9 @@ class TrafficAnalysisInputPage(QWidget):
         _expand_width(self.direct_los)
         add_labeled_row(direct_grid, 5, "Level of Service LOS =", self.direct_los, ROW_HEIGHT)
 
+        self.read_los.currentTextChanged.connect(self._on_los_changed)
+        self.direct_los.currentTextChanged.connect(self._on_los_changed)
+
         self.direct_aadt = make_integer_line_edit(maximum=9_999_999)
         _expand_width(self.direct_aadt)
         add_labeled_row(direct_grid, 6, "Average Annual Daily Traffic AADT =", self.direct_aadt, ROW_HEIGHT)
@@ -315,6 +320,19 @@ class TrafficAnalysisInputPage(QWidget):
             return self.read_r.value() / 100.0
         return self.direct_r.value() / 100.0
 
+    def active_los(self) -> str:
+        if self.is_read_data_mode():
+            return self.read_los.currentText()
+        return self.direct_los.currentText()
+
+    def set_active_los(self, los: str) -> None:
+        if los not in LOS_OPTIONS:
+            return
+        combo = self.read_los if self.is_read_data_mode() else self.direct_los
+        combo.blockSignals(True)
+        combo.setCurrentText(los)
+        combo.blockSignals(False)
+
     @staticmethod
     def _parse_int_text(text: str) -> int:
         value = (text or "").strip().replace(",", "")
@@ -366,6 +384,11 @@ class TrafficAnalysisInputPage(QWidget):
             mw.refresh_lane_projection()
         if hasattr(mw, "refresh_aadt_pcu"):
             mw.refresh_aadt_pcu()
+
+    def _on_los_changed(self, _text: str = "") -> None:
+        mw = self.window()
+        if hasattr(mw, "refresh_lane_los_context"):
+            mw.refresh_lane_los_context()
 
     def _on_geometry_design_year_changed(self, _text: str = "") -> None:
         mw = self.window()

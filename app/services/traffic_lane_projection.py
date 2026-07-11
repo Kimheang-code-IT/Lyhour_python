@@ -36,6 +36,21 @@ class LaneProjectionResult:
     def has_data(self) -> bool:
         return bool(self.projection_rows)
 
+    @property
+    def projection_table_rows(self) -> list[list[str]]:
+        """Table rows for the lane projection summary table."""
+        rows: list[list[str]] = []
+        for row in self.projection_rows:
+            rows.append([
+                str(int(row["Year"])),
+                f"{float(row['D1 Projected Volume']):,.0f}",
+                f"{float(row['D2 Projected Volume']):,.0f}",
+                str(int(row["D1 Required Lanes"])),
+                str(int(row["D2 Required Lanes"])),
+                str(int(row["Total Required Lanes"])),
+            ])
+        return rows
+
 
 def peak_hour_volume(hourly_rows: list[list]) -> int:
     """Return the maximum hourly total volume from one sheet (last column)."""

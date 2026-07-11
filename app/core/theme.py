@@ -429,6 +429,35 @@ def kbd_hint_stylesheet(tokens: ThemeTokens) -> str:
     """
 
 
+def hidden_scrollbar_stylesheet() -> str:
+    """QSS snippet to hide scrollbar tracks and arrow buttons."""
+    return """
+    QScrollBar:vertical {
+        background: transparent;
+        width: 0px;
+        margin: 0;
+    }
+    QScrollBar:horizontal {
+        background: transparent;
+        height: 0px;
+        margin: 0;
+    }
+    QScrollBar::handle:vertical,
+    QScrollBar::handle:horizontal {
+        background: transparent;
+    }
+    QScrollBar::add-line,
+    QScrollBar::sub-line,
+    QScrollBar::add-page,
+    QScrollBar::sub-page {
+        background: none;
+        border: none;
+        width: 0;
+        height: 0;
+    }
+    """
+
+
 def get_stylesheet(theme: str = "dark", *, accent: str | None = None) -> str:
     """Return global stylesheet for ``dark`` or ``light`` theme."""
     t = theme_tokens(theme, accent)
@@ -460,8 +489,7 @@ def get_stylesheet(theme: str = "dark", *, accent: str | None = None) -> str:
     }}
     QComboBox QAbstractItemView {{ background-color: {t.bg_panel}; color: {t.text_primary}; }}
     QScrollArea {{ border: none; background-color: transparent; color: {t.text_primary}; }}
-    QScrollBar:vertical {{ background: {t.scrollbar_bg}; width: 12px; }}
-    QScrollBar::handle:vertical {{ background: {t.scrollbar_handle}; min-height: 24px; border-radius: 4px; }}
+    {hidden_scrollbar_stylesheet()}
     QLabel {{ color: {t.text_primary}; }}
     QGroupBox {{ color: {t.text_primary}; border: 1px solid {t.border}; border-radius: 6px; margin-top: 10px; padding-top: 10px; }}
     QToolTip {{ background-color: {t.tooltip_bg}; color: {t.tooltip_text}; border: 1px solid {t.border}; padding: 6px 10px; }}
@@ -517,10 +545,7 @@ def get_stylesheet(theme: str = "dark", *, accent: str | None = None) -> str:
         width: 0; height: 0; border: none; background: transparent;
     }}
     QScrollArea {{ border: none; outline: none; background-color: transparent; color: {t.text_primary}; }}
-    QScrollBar:vertical {{ background: {t.scrollbar_bg}; width: 12px; margin: 0; }}
-    QScrollBar::handle:vertical {{ background: {t.scrollbar_handle}; min-height: 24px; }}
-    QScrollBar::handle:vertical:hover {{ background: {t.hover}; }}
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    {hidden_scrollbar_stylesheet()}
     QLabel {{ color: {t.text_primary}; }}
     QGroupBox {{ color: {t.text_primary}; border: none; outline: none; margin-top: 8px; padding-top: 8px; }}
     QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 4px; }}
