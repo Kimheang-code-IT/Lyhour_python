@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.widgets.form_controls import make_combo, make_radio
+from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 from app.core.theme import theme_tokens
 from app.utils.result_html import result_highlight_style, wrap_result_description_lines
 from app.core.ui_scale import UiScale
@@ -388,11 +389,10 @@ class EsalPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
 
         scroll_content = QWidget()
+        fit_scroll_content(scroll_content)
         layout = QVBoxLayout(scroll_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
@@ -532,6 +532,7 @@ class EsalPage(QWidget):
         layout.addStretch()
 
         scroll.setWidget(scroll_content)
+        configure_page_scroll(scroll)
         outer_layout.addWidget(scroll)
         self._sync_load_mode_controls()
         self.refresh_ui_scale()

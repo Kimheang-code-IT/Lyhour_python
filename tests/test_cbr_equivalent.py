@@ -1,5 +1,9 @@
 """Tests for CBR equivalent calculations."""
-from app.data.cbr_equivalent import compute_cbr_equivalent
+from app.data.cbr_equivalent import (
+    compute_cbr_equivalent,
+    compute_cbr_equivalent_from_user_layers,
+    format_cbr_equivalent_result,
+)
 from app.data.dcp_analysis import DcpInputRow, analyze_dcp_rows
 
 
@@ -36,3 +40,15 @@ def test_compute_cbr_equivalent_respects_design_depth() -> None:
     assert len(result.layers) == 2
     assert result.layers[-1].to_depth_mm == 80.0
     assert result.total_thickness_mm == 80.0
+
+
+def test_compute_cbr_equivalent_from_user_layers() -> None:
+    result = compute_cbr_equivalent_from_user_layers(
+        [(10.0, 100.0), (20.0, 100.0), (30.0, 100.0)],
+        design_depth_mm=200.0,
+    )
+    assert result is not None
+    assert len(result.layers) == 2
+    assert result.total_thickness_mm == 200.0
+    assert result.cbr_equivalent_percent == 15.0
+    assert format_cbr_equivalent_result(result) == "Result = 15.00 %"

@@ -1,8 +1,7 @@
-"""Dynamic Cone Penetrometer (DCP) test calculations and charts."""
+"""Dynamic Cone Penetrometer (DCP) test calculations."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 
 @dataclass(frozen=True)
@@ -84,45 +83,3 @@ def summarize_dcp_analysis(rows: list[DcpAnalysisRow]) -> dict[str, str]:
         summary["Minimum CBR"] = f"{min(valid_cbr):,.2f} %"
         summary["Average CBR"] = f"{sum(valid_cbr) / len(valid_cbr):,.2f} %"
     return summary
-
-
-def draw_dcp_depth_vs_blows(ax: Any, rows: list[DcpAnalysisRow]) -> None:
-    """Depth (inverted) vs cumulative blows."""
-    plot_rows = [row for row in rows if row.total_blow_number > 0 or row.total_penetration_mm > 0]
-    if len(plot_rows) < 2:
-        ax.text(0.5, 0.5, "Enter DCP data to plot", ha="center", va="center", transform=ax.transAxes)
-        ax.set_axis_off()
-        return
-
-    x = [row.total_blow_number for row in plot_rows]
-    y = [row.total_penetration_mm for row in plot_rows]
-
-    ax.plot(x, y, color="#1f77b4", marker="o", markerfacecolor="white", linewidth=1.8)
-    ax.set_xlabel("Total Blow Number")
-    ax.set_ylabel("Total Penetration (mm)")
-    ax.set_title("Depth vs Total Blows", pad=10)
-    ax.invert_yaxis()
-    ax.grid(True, alpha=0.35)
-
-
-def draw_dcp_depth_vs_cbr(ax: Any, rows: list[DcpAnalysisRow]) -> None:
-    """Depth (inverted) vs CBR%."""
-    plot_rows = [
-        row
-        for row in rows
-        if row.cbr_percent is not None and row.total_penetration_mm > 0
-    ]
-    if len(plot_rows) < 2:
-        ax.text(0.5, 0.5, "Enter DCP data to plot", ha="center", va="center", transform=ax.transAxes)
-        ax.set_axis_off()
-        return
-
-    x = [row.cbr_percent for row in plot_rows]
-    y = [row.total_penetration_mm for row in plot_rows]
-
-    ax.plot(x, y, color="#d62728", marker="D", markerfacecolor="white", linewidth=1.8)
-    ax.set_xlabel("CBR (%)")
-    ax.set_ylabel("Total Penetration (mm)")
-    ax.set_title("Depth vs CBR", pad=10)
-    ax.invert_yaxis()
-    ax.grid(True, alpha=0.35)

@@ -27,7 +27,7 @@ from app.services.excel_io import ExcelIOService
 from app.data.area_type import AREA_TYPE_OPTIONS, DEFAULT_AREA_TYPE
 from app.widgets.labeled_input import add_labeled_row
 from app.widgets.button import secondary_button
-from app.widgets.scroll_utils import configure_hidden_scrollbars
+from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 from app.widgets.traffic_results import refresh_theme_widgets
 
 try:
@@ -122,9 +122,9 @@ class TrafficAnalysisInputPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        configure_hidden_scrollbars(scroll)
 
         scroll_content = QWidget()
+        fit_scroll_content(scroll_content)
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 8, 0, 0)
         scroll_layout.setSpacing(20)
@@ -251,6 +251,7 @@ class TrafficAnalysisInputPage(QWidget):
 
         scroll_layout.addStretch()
         scroll.setWidget(scroll_content)
+        configure_page_scroll(scroll)
         layout.addWidget(scroll, 1)
         self._section_titles = [
             title for title in (read_title, direct_title) if isinstance(title, QLabel)

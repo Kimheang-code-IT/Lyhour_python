@@ -19,6 +19,7 @@ from app.services.traffic_lane_projection import (
     chart_bars_from_projection,
 )
 from app.widgets.form_controls import make_combo
+from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 from app.widgets.traffic_results import BarChart, refresh_theme_widgets, result_card, result_description_label, scrollable_result_table
 
 
@@ -37,11 +38,10 @@ class NumberOfLanePage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
 
         scroll_content = QWidget()
+        fit_scroll_content(scroll_content)
         layout = QVBoxLayout(scroll_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
@@ -103,6 +103,7 @@ class NumberOfLanePage(QWidget):
         layout.addStretch()
 
         scroll.setWidget(scroll_content)
+        configure_page_scroll(scroll)
         outer_layout.addWidget(scroll)
 
         self._los_combo.currentTextChanged.connect(self._on_los_changed)

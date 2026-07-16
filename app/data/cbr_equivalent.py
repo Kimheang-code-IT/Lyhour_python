@@ -1,9 +1,7 @@
-"""CBR Equivalent calculations from DCP layer CBR values."""
+"""CBR Equivalent calculations from DCP or user-defined layers."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from typing import Any
 
 from app.data.dcp_analysis import DcpAnalysisRow
 
@@ -30,42 +28,70 @@ class CbrEquivalentResult:
         return sum(layer.thickness_mm for layer in self.layers)
 
 
-def compute_cbr_equivalent(
-    rows: list[DcpAnalysisRow],
-    *,
-    design_depth_mm: float = 300.0,
-) -> CbrEquivalentResult | None:
-    """Thickness-weighted CBR equivalent over the top ``design_depth_mm`` of subgrade."""
-    depth = float(design_depth_mm)
-    if depth <= 0:
-        return None
+@dataclass(frozen=True)
+class DcpCbrDisplayRow:
+    """One row for the Use-DCP-data input table (English headers)."""
 
+    depth_mm: float
+    thickness_mm: float | None
+    total_blows: float
+    penetration_rate_mm_per_blow: float | None
+    layered_cbr_percent: float | None
+    evaluation: str
+
+
+def evaluate_layered_cbr(cbr_percent: float | None) -> str:
+    """Simple qualitative rating for the Evaluation column."""
+    if cbr_percent is None:
+        return ""
+    if cbr_percent < 3:
+        return "Very poor"
+    if cbr_percent < 5:
+        return "Poor"
+    if cbr_percent < 10:
+        return "Fair"
+    if cbr_percent < 15:
+        return "Good"
+    return "Excellent"
+
+
+def build_dcp_cbr_display_rows(rows: list[DcpAnalysisRow]) -> list[DcpCbrDisplayRow]:
+    """Map DCP analysis rows to the English CBR input table."""
+    display: list[DcpCbrDisplayRow] = []
+    for row in rows:
+        display.append(
+            DcpCbrDisplayRow(
+                depth_mm=float(row.total_penetration_mm),
+                thickness_mm=row.change_penetration_mm,
+                total_blows=float(row.total_blow_number),
+                penetration_rate_mm_per_blow=row.penetration_index_mm_per_blow,
+                layered_cbr_percent=row.cbr_percent,
+                evaluation=evaluate_layered_cbr(row.cbr_percent),
+            )
+        )
+    return display
+
+
+def _result_from_layer_parts(
+    parts: list[tuple[float, float, float, float]],
+    *,
+    design_depth_mm: float,
+) -> CbrEquivalentResult:
+    """Build result from (from_depth, to_depth, thickness, cbr) parts."""
     layers: list[CbrEquivalentLayer] = []
     weighted_sum = 0.0
     thickness_sum = 0.0
     minimum_cbr: float | None = None
 
-    for index, row in enumerate(rows):
-        if index == 0 or row.cbr_percent is None:
-            continue
-
-        previous_depth = float(rows[index - 1].total_penetration_mm)
-        layer_bottom = min(float(row.total_penetration_mm), depth)
-        layer_top = previous_depth
-        if layer_top >= depth:
-            break
-
-        thickness = layer_bottom - layer_top
+    for from_depth, to_depth, thickness, cbr in parts:
         if thickness <= 0:
             continue
-
-        cbr = float(row.cbr_percent)
         contribution = cbr * thickness
         layers.append(
             CbrEquivalentLayer(
                 layer_no=len(layers) + 1,
-                from_depth_mm=layer_top,
-                to_depth_mm=layer_bottom,
+                from_depth_mm=from_depth,
+                to_depth_mm=to_depth,
                 thickness_mm=thickness,
                 cbr_percent=cbr,
                 weighted_contribution=contribution,
@@ -77,18 +103,112 @@ def compute_cbr_equivalent(
 
     if not layers:
         return CbrEquivalentResult(
-            design_depth_mm=depth,
+            design_depth_mm=design_depth_mm,
             layers=tuple(),
             cbr_equivalent_percent=None,
             minimum_cbr_percent=None,
         )
 
     return CbrEquivalentResult(
-        design_depth_mm=depth,
+        design_depth_mm=design_depth_mm,
         layers=tuple(layers),
         cbr_equivalent_percent=weighted_sum / thickness_sum,
         minimum_cbr_percent=minimum_cbr,
     )
+
+
+def compute_cbr_equivalent(
+    rows: list[DcpAnalysisRow],
+    *,
+    design_depth_mm: float | None = None,
+) -> CbrEquivalentResult | None:
+    """Thickness-weighted CBR equivalent from DCP layers.
+
+    When ``design_depth_mm`` is None, all DCP layers with CBR are used.
+    """
+    if design_depth_mm is not None and float(design_depth_mm) <= 0:
+        return None
+
+    depth_limit = float(design_depth_mm) if design_depth_mm is not None else None
+    parts: list[tuple[float, float, float, float]] = []
+    full_depth = 0.0
+
+    for index, row in enumerate(rows):
+        if index == 0 or row.cbr_percent is None:
+            continue
+
+        previous_depth = float(rows[index - 1].total_penetration_mm)
+        layer_bottom = float(row.total_penetration_mm)
+        layer_top = previous_depth
+        full_depth = max(full_depth, layer_bottom)
+
+        if depth_limit is not None:
+            if layer_top >= depth_limit:
+                break
+            layer_bottom = min(layer_bottom, depth_limit)
+
+        thickness = layer_bottom - layer_top
+        if thickness <= 0:
+            continue
+
+        parts.append((layer_top, layer_bottom, thickness, float(row.cbr_percent)))
+
+    design_depth = depth_limit if depth_limit is not None else full_depth
+    return _result_from_layer_parts(parts, design_depth_mm=design_depth)
+
+
+def compute_cbr_equivalent_from_user_layers(
+    layers: list[tuple[float, float]],
+    *,
+    design_depth_mm: float | None = None,
+) -> CbrEquivalentResult | None:
+    """Thickness-weighted CBR from user pairs of (CBR %, Hi mm).
+
+    When ``design_depth_mm`` is set, only the top zone up to that depth is used.
+    """
+    if not layers:
+        return CbrEquivalentResult(
+            design_depth_mm=float(design_depth_mm or 0.0),
+            layers=tuple(),
+            cbr_equivalent_percent=None,
+            minimum_cbr_percent=None,
+        )
+
+    depth_limit = float(design_depth_mm) if design_depth_mm and design_depth_mm > 0 else None
+    parts: list[tuple[float, float, float, float]] = []
+    cursor = 0.0
+
+    for cbr_raw, hi_raw in layers:
+        cbr = float(cbr_raw)
+        hi = float(hi_raw)
+        if hi <= 0:
+            continue
+
+        layer_top = cursor
+        layer_bottom = cursor + hi
+        if depth_limit is not None:
+            if layer_top >= depth_limit:
+                break
+            layer_bottom = min(layer_bottom, depth_limit)
+
+        thickness = layer_bottom - layer_top
+        if thickness <= 0:
+            break
+
+        parts.append((layer_top, layer_bottom, thickness, cbr))
+        cursor = layer_bottom
+        if depth_limit is not None and cursor >= depth_limit:
+            break
+
+    design_depth = depth_limit if depth_limit is not None else cursor
+    return _result_from_layer_parts(parts, design_depth_mm=design_depth)
+
+
+def format_cbr_equivalent_result(result: CbrEquivalentResult | None) -> str:
+    """Human-readable calculator result line."""
+    if result is None or result.cbr_equivalent_percent is None:
+        return "Result = —"
+    return f"Result = {result.cbr_equivalent_percent:,.2f} %"
 
 
 def summarize_cbr_equivalent(result: CbrEquivalentResult | None) -> dict[str, str]:
@@ -97,44 +217,11 @@ def summarize_cbr_equivalent(result: CbrEquivalentResult | None) -> dict[str, st
         return {}
 
     summary: dict[str, str] = {
-        "Design depth": f"{result.design_depth_mm:,.0f} mm",
         "Layers used": str(len(result.layers)),
+        "Total thickness": f"{result.total_thickness_mm:,.0f} mm",
     }
     if result.cbr_equivalent_percent is not None:
         summary["CBR Equivalent"] = f"{result.cbr_equivalent_percent:,.2f} %"
     if result.minimum_cbr_percent is not None:
         summary["Minimum CBR in zone"] = f"{result.minimum_cbr_percent:,.2f} %"
     return summary
-
-
-def draw_cbr_equivalent_profile(ax: Any, result: CbrEquivalentResult) -> None:
-    """Plot layer CBR values and the equivalent CBR line."""
-    if not result.layers:
-        ax.text(0.5, 0.5, "Enter DCP data to calculate CBR Equivalent", ha="center", va="center", transform=ax.transAxes)
-        ax.set_axis_off()
-        return
-
-    depths: list[float] = [result.layers[0].from_depth_mm]
-    cbr_steps: list[float] = [result.layers[0].cbr_percent]
-    for layer in result.layers:
-        depths.extend([layer.to_depth_mm, layer.to_depth_mm])
-        cbr_steps.extend([layer.cbr_percent, layer.cbr_percent])
-    depths = depths[:-1]
-    cbr_steps = cbr_steps[:-1]
-
-    ax.plot(cbr_steps, depths, color="#1f77b4", linewidth=2.0, drawstyle="steps-post")
-    if result.cbr_equivalent_percent is not None:
-        ax.axvline(
-            result.cbr_equivalent_percent,
-            color="#d62728",
-            linestyle="--",
-            linewidth=1.6,
-            label=f"CBR Equivalent = {result.cbr_equivalent_percent:.2f}%",
-        )
-        ax.legend(loc="lower right", fontsize=8)
-
-    ax.set_xlabel("CBR (%)")
-    ax.set_ylabel("Depth (mm)")
-    ax.set_title("CBR Equivalent Profile", pad=10)
-    ax.invert_yaxis()
-    ax.grid(True, alpha=0.35)

@@ -1,7 +1,6 @@
 """AADT & PCU subpage."""
 import math
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QAbstractItemView, QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from app.core.ui_scale import UiScale
@@ -13,6 +12,7 @@ from app.widgets.traffic_results import (
     result_card,
     scrollable_result_table,
 )
+from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 from app.services.traffic_aadt_pcu import AadtPcuResult
 
 
@@ -29,11 +29,10 @@ class AadtPcuPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
 
         scroll_content = QWidget()
+        fit_scroll_content(scroll_content)
         layout = QVBoxLayout(scroll_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
@@ -74,6 +73,7 @@ class AadtPcuPage(QWidget):
         layout.addStretch()
 
         scroll.setWidget(scroll_content)
+        configure_page_scroll(scroll)
         outer_layout.addWidget(scroll)
         self.refresh_ui_scale()
 

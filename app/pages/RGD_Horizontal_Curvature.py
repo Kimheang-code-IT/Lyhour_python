@@ -18,7 +18,7 @@ from app.data.tables_Horizontal_Curvature import (
 from app.services import pdf_preview as pdf_preview_svc
 from app.core.ui_style import section_title_style, title_style
 from app.widgets.labeled_input import add_labeled_row
-from app.widgets.scroll_utils import configure_hidden_scrollbars
+from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 from app.widgets.button import primary_button, secondary_button
 
 from PyQt6.QtWidgets import (
@@ -41,11 +41,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtCore import Qt
 
-from app.data.simple_curve_geometry import (
-    compute_simple_curve_elements,
-    draw_simple_curve_diagram,
-)
-from app.widgets.chart_ui import MatplotlibChartWidget
+from app.chart import MatplotlibChartWidget, draw_simple_curve_diagram
+from app.data.simple_curve_geometry import compute_simple_curve_elements
 from app.widgets.form_controls import make_combo, make_double_spin
 
 
@@ -138,7 +135,6 @@ class RGDHorizontalCurvaturePage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        configure_hidden_scrollbars(scroll)
 
         form_widget = QFrame()
         form_widget.setObjectName("inputSectionFrame")
@@ -233,6 +229,7 @@ class RGDHorizontalCurvaturePage(QWidget):
         input_layout.addWidget(fields_host)
 
         scroll_content = QWidget()
+        fit_scroll_content(scroll_content)
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 0, 0, 0)
         scroll_layout.setSpacing(BLOCK_SPACING)
@@ -297,6 +294,7 @@ class RGDHorizontalCurvaturePage(QWidget):
         scroll_layout.addWidget(design_widget, 1)
 
         scroll.setWidget(scroll_content)
+        configure_page_scroll(scroll)
         form_layout.addWidget(scroll, 1)
 
         # -------------------------
@@ -344,7 +342,7 @@ class RGDHorizontalCurvaturePage(QWidget):
         self.design_chart.figure.clear()
         ax = self.design_chart.add_subplot(111)
         draw_simple_curve_diagram(ax, elements)
-        self.design_chart.canvas.draw()
+        self.design_chart.canvas.draw_idle()
 
     def _sync_design_radius_from_results(self) -> None:
         r_calc = self._results.get("Minimum Radius")
@@ -395,8 +393,8 @@ class RGDHorizontalCurvaturePage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        configure_hidden_scrollbars(scroll)
         scroll.setWidget(self.pdf_preview_label)
+        configure_page_scroll(scroll)
 
         layout.addWidget(scroll, 1)
         return page
@@ -406,9 +404,9 @@ class RGDHorizontalCurvaturePage(QWidget):
     # -------------------------
     def showEvent(self, event: QShowEvent):
         super().showEvent(event)
-        self._on_input_changed()
-        self._refresh_design_chart()
+        # Avoid full recalculation + chart redraw on every revisit.
         self._sync_quick_panel_button()
+        self._push_to_quick_panel_and_state()
 
     def activate_page(self) -> None:
         self._push_to_quick_panel_and_state()

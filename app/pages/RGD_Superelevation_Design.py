@@ -15,15 +15,12 @@ from PyQt6.QtWidgets import (
 
 from app.layouts import BasePage, define_page
 from app.core.ui_style import section_title_style, title_style
-from app.data.superelevation_profile import (
-    compute_superelevation_profile,
-    draw_superelevation_profile,
-)
-from app.widgets.chart_ui import MatplotlibChartWidget
+from app.chart import MatplotlibChartWidget, draw_superelevation_profile
+from app.data.superelevation_profile import compute_superelevation_profile
 from app.widgets.form_controls import make_combo, make_double_spin
 from app.widgets.labeled_input import add_labeled_row
 from app.widgets.button import secondary_button
-from app.widgets.scroll_utils import configure_hidden_scrollbars
+from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 
 VEHICLE_SPEED_OPTIONS = [f"{v} km/h" for v in (25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130)]
 ROAD_CLASSIFICATION_OPTIONS = ["Class I", "Class II", "Class III", "Rural", "Urban"]
@@ -54,9 +51,9 @@ class RGDSuperelevationDesignPage(BasePage):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        configure_hidden_scrollbars(scroll)
 
         scroll_content = QWidget()
+        fit_scroll_content(scroll_content)
         page_layout = QVBoxLayout(scroll_content)
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(BLOCK_SPACING)
@@ -103,7 +100,7 @@ class RGDSuperelevationDesignPage(BasePage):
         self.e_max_spin.setRange(2.5, 20)
         self.e_max_spin.setDecimals(2)
         self.e_max_spin.setSuffix(" %")
-        self.e_max_spin.setValue(5.0)
+        self.e_max_spin.setValue(6.0)
         self.e_max_spin.valueChanged.connect(self._on_input_changed)
         add_labeled_row(
             form_grid, row, "Pavement Superelevation (e_max) =", self.e_max_spin, ROW_HEIGHT
@@ -128,7 +125,7 @@ class RGDSuperelevationDesignPage(BasePage):
         self.relative_gradient_spin.setRange(0.01, 5.0)
         self.relative_gradient_spin.setDecimals(3)
         self.relative_gradient_spin.setSuffix(" %")
-        self.relative_gradient_spin.setValue(0.30)
+        self.relative_gradient_spin.setValue(0.35)
         self.relative_gradient_spin.setToolTip("Rate of change for edge rotation")
         self.relative_gradient_spin.valueChanged.connect(self._on_input_changed)
         add_labeled_row(form_grid, row, "Relative gradient =", self.relative_gradient_spin, ROW_HEIGHT)
@@ -176,24 +173,24 @@ class RGDSuperelevationDesignPage(BasePage):
         self.analysis_summary_label.setStyleSheet("color: #cccccc; font-size: 13px; padding: 4px 0;")
         analysis_layout.addWidget(self.analysis_summary_label)
 
-        self.analysis_chart = MatplotlibChartWidget(figsize=(9.0, 4.5))
-        self.analysis_chart.setMinimumHeight(360)
+        self.analysis_chart = MatplotlibChartWidget(figsize=(10.5, 6.0))
+        self.analysis_chart.setMinimumHeight(480)
         analysis_layout.addWidget(self.analysis_chart, 1)
 
         page_layout.addWidget(analysis_widget, 1)
         scroll.setWidget(scroll_content)
+        configure_page_scroll(scroll)
         content.addWidget(scroll, 1)
         self._on_input_changed()
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self._setup_quick_panel()
-        self._refresh_analysis()
         self._sync_quick_panel_button()
 
     def activate_page(self) -> None:
+        # Charts stay current from input changes — avoid a second full redraw on switch.
         self._setup_quick_panel()
-        self._refresh_analysis()
         self._sync_quick_panel_button()
 
     def _toggle_quick_panel(self) -> None:
@@ -271,5 +268,6 @@ class RGDSuperelevationDesignPage(BasePage):
         ax = self.analysis_chart.add_subplot(111)
         draw_superelevation_profile(ax, profile)
         fig = self.analysis_chart.figure
-        fig.subplots_adjust(bottom=0.18, left=0.11, right=0.78, top=0.94)
-        self.analysis_chart.canvas.draw()
+        # Extra bottom margin for cross-section icons + figure caption.
+        fig.subplots_adjust(bottom=0.26, left=0.09, right=0.80, top=0.92)
+        self.analysis_chart.canvas.draw_idle()

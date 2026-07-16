@@ -36,7 +36,7 @@ def test_superelevation_profile_invalid_gradient() -> None:
 def test_y_axis_tick_labels() -> None:
     import numpy as np
 
-    from app.data.superelevation_profile import (
+    from app.chart.superelevation import (
         Y_AXIS_MAX,
         Y_AXIS_MIN,
         Y_AXIS_TICK_STEP,

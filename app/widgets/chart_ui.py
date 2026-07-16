@@ -71,19 +71,26 @@ class MatplotlibChartWidget(QWidget):
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.canvas)
-        self.apply_theme()
+        # Theme only — skip empty canvas.draw() (pages draw real data next).
+        self.apply_theme(draw=False)
 
-    def apply_theme(self) -> None:
+    def apply_theme(self, *, draw: bool = True) -> None:
         if self.figure is None or self.canvas is None:
             return
         _apply_matplotlib_theme(self.figure)
-        self.canvas.draw()
+        if draw:
+            self.canvas.draw_idle()
 
     def clear(self) -> None:
-        if self.figure is None:
+        if self.figure is None or self.canvas is None:
             return
         self.figure.clear()
-        self.canvas.draw()
+        self.canvas.draw_idle()
+
+    def redraw(self) -> None:
+        """Schedule a paint without blocking the UI thread as hard as draw()."""
+        if self.canvas is not None:
+            self.canvas.draw_idle()
 
     def add_subplot(self, *args: Any, **kwargs: Any):
         if self.figure is None:

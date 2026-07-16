@@ -142,8 +142,8 @@ class QuickPanel(QFrame):
         self.set_wide_width()
         fields = [
             ("CBR Equivalent", "CBR Equivalent ="),
-            ("Design depth", "Design depth ="),
             ("Minimum CBR in zone", "Minimum CBR in zone ="),
+            ("Total thickness", "Total thickness ="),
             ("Layers used", "Layers used ="),
         ]
         self._set_schema(fields)
@@ -158,6 +158,20 @@ class QuickPanel(QFrame):
             ("Reliability R0", "Reliability design R0 ="),
             ("Effective MR", "Effective roadbed MR ="),
             ("Average uf", "Average relative damage uf ="),
+        ]
+        self._set_schema(fields)
+
+    def set_flexible_catalog_schema(self) -> None:
+        """Schema for Flexible Pavement Catalog/Analysis tab."""
+        self.set_wide_width()
+        fields = [
+            ("Seal type", "Seal type ="),
+            ("Traffic", "Traffic ="),
+            ("Foundation", "Foundation ="),
+            ("Catalog", "Catalog ="),
+            ("Total thickness", "Total thickness ="),
+            ("Structure", "Structure ="),
+            ("Subgrade CBR", "Subgrade CBR ="),
         ]
         self._set_schema(fields)
 

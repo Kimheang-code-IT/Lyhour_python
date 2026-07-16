@@ -4,7 +4,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QFrame, QScrollArea, QVBoxLayout
 
 from app.layouts.base import BaseLayout, make_page_title
-from app.widgets.scroll_utils import configure_hidden_scrollbars
+from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 
 
 class ScrollLayout(BaseLayout):
@@ -24,6 +24,7 @@ class ScrollLayout(BaseLayout):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        configure_hidden_scrollbars(scroll)
+        fit_scroll_content(self._content_host)
         scroll.setWidget(self._content_host)
+        configure_page_scroll(scroll)
         root.addWidget(scroll, 1)

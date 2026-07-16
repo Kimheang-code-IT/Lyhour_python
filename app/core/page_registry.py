@@ -110,35 +110,95 @@ SEARCH_PAGES: tuple[SearchPageEntry, ...] = (
 
 
 def build_page_factories() -> list[Callable[[QWidget], QWidget]]:
-    """Return lazy page constructors in stack index order."""
-    from app.pages.Traffic_Analysis_input import TrafficAnalysisInputPage
-    from app.pages.Traffic_Analysis_Detail_Result import TrafficAnalysisDetailResultPage
-    from app.pages.RGD_Cross_Section import RGDCrossSectionPage
-    from app.pages.RGD_Horizontal_Curvature import RGDHorizontalCurvaturePage
-    from app.pages.RGD_Superelevation_Design import RGDSuperelevationDesignPage
-    from app.pages.RGD_Vertical_Curve import RGDVerticalCurvePage
-    from app.pages.RGD_Subgrade_Design import RGDSubgradeDesignPage
-    from app.pages.Flexible_Pavement import FlexiblePavementPage
-    from app.pages.Rigid_Pavement import RigidPavementPage
-    from app.pages.Material_Design import MaterialDesignPage
-    from app.pages.Pavement_Evaluation import PavementEvaluationPage
-    from app.pages.Intersection_Taper import IntersectionTaperPage
-    from app.pages.Intersection_Accelerations import IntersectionAccelerationsPage
-    from app.pages.Intersection_Decelerations import IntersectionDecelerationsPage
+    """Return lazy page constructors in stack index order.
+
+    Each factory imports its page module only on first open (faster startup /
+    first navigation to unrelated pages).
+    """
+
+    def _traffic_input(parent: QWidget) -> QWidget:
+        from app.pages.Traffic_Analysis_input import TrafficAnalysisInputPage
+
+        return TrafficAnalysisInputPage(parent)
+
+    def _traffic_analysis(parent: QWidget) -> QWidget:
+        from app.pages.Traffic_Analysis_Detail_Result import TrafficAnalysisDetailResultPage
+
+        return TrafficAnalysisDetailResultPage(parent)
+
+    def _cross_section(parent: QWidget) -> QWidget:
+        from app.pages.RGD_Cross_Section import RGDCrossSectionPage
+
+        return RGDCrossSectionPage(parent)
+
+    def _horizontal(parent: QWidget) -> QWidget:
+        from app.pages.RGD_Horizontal_Curvature import RGDHorizontalCurvaturePage
+
+        return RGDHorizontalCurvaturePage(parent)
+
+    def _superelevation(parent: QWidget) -> QWidget:
+        from app.pages.RGD_Superelevation_Design import RGDSuperelevationDesignPage
+
+        return RGDSuperelevationDesignPage(parent)
+
+    def _vertical(parent: QWidget) -> QWidget:
+        from app.pages.RGD_Vertical_Curve import RGDVerticalCurvePage
+
+        return RGDVerticalCurvePage(parent)
+
+    def _subgrade(parent: QWidget) -> QWidget:
+        from app.pages.RGD_Subgrade_Design import RGDSubgradeDesignPage
+
+        return RGDSubgradeDesignPage(parent)
+
+    def _flexible(parent: QWidget) -> QWidget:
+        from app.pages.Flexible_Pavement import FlexiblePavementPage
+
+        return FlexiblePavementPage(parent)
+
+    def _rigid(parent: QWidget) -> QWidget:
+        from app.pages.Rigid_Pavement import RigidPavementPage
+
+        return RigidPavementPage(parent)
+
+    def _material(parent: QWidget) -> QWidget:
+        from app.pages.Material_Design import MaterialDesignPage
+
+        return MaterialDesignPage(parent)
+
+    def _pavement_eval(parent: QWidget) -> QWidget:
+        from app.pages.Pavement_Evaluation import PavementEvaluationPage
+
+        return PavementEvaluationPage(parent)
+
+    def _taper(parent: QWidget) -> QWidget:
+        from app.pages.Intersection_Taper import IntersectionTaperPage
+
+        return IntersectionTaperPage(parent)
+
+    def _accel(parent: QWidget) -> QWidget:
+        from app.pages.Intersection_Accelerations import IntersectionAccelerationsPage
+
+        return IntersectionAccelerationsPage(parent)
+
+    def _decel(parent: QWidget) -> QWidget:
+        from app.pages.Intersection_Decelerations import IntersectionDecelerationsPage
+
+        return IntersectionDecelerationsPage(parent)
 
     return [
-        lambda p: TrafficAnalysisInputPage(p),
-        lambda p: TrafficAnalysisDetailResultPage(p),
-        lambda p: RGDCrossSectionPage(p),
-        lambda p: RGDHorizontalCurvaturePage(p),
-        lambda p: RGDSuperelevationDesignPage(p),
-        lambda p: RGDVerticalCurvePage(p),
-        lambda p: RGDSubgradeDesignPage(p),
-        lambda p: FlexiblePavementPage(p),
-        lambda p: RigidPavementPage(p),
-        lambda p: MaterialDesignPage(p),
-        lambda p: PavementEvaluationPage(p),
-        lambda p: IntersectionTaperPage(p),
-        lambda p: IntersectionAccelerationsPage(p),
-        lambda p: IntersectionDecelerationsPage(p),
+        _traffic_input,
+        _traffic_analysis,
+        _cross_section,
+        _horizontal,
+        _superelevation,
+        _vertical,
+        _subgrade,
+        _flexible,
+        _rigid,
+        _material,
+        _pavement_eval,
+        _taper,
+        _accel,
+        _decel,
     ]

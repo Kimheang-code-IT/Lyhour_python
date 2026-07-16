@@ -279,9 +279,9 @@ class MainWindow(QMainWindow):
             traffic_state.pop("esal_load_mode", None)
         self.refresh_esal()
         detail_page = self._page_widgets[1] if len(self._page_widgets) > 1 else None
-        if detail_page is not None and hasattr(detail_page, "esal_page"):
-            esal_page = detail_page.esal_page
-            if hasattr(esal_page, "clear_tld_excel"):
+        if detail_page is not None:
+            esal_page = getattr(detail_page, "esal_page", None)
+            if esal_page is not None and hasattr(esal_page, "clear_tld_excel"):
                 esal_page.clear_tld_excel()
 
     def _open_excel_tab(self, session_id: str) -> None:
@@ -384,9 +384,9 @@ class MainWindow(QMainWindow):
     def _present_tld_import(self, data: dict) -> None:
         source_path = str(data.get("source_path") or "")
         detail_page = self._page_widgets[1] if len(self._page_widgets) > 1 else None
-        if detail_page is not None and hasattr(detail_page, "esal_page"):
-            esal_page = detail_page.esal_page
-            if hasattr(esal_page, "restore_tld_import"):
+        if detail_page is not None:
+            esal_page = getattr(detail_page, "esal_page", None)
+            if esal_page is not None and hasattr(esal_page, "restore_tld_import"):
                 esal_page.restore_tld_import(source_path or None)
 
     def _navigate_to_traffic_esal(self) -> None:
@@ -904,10 +904,11 @@ class MainWindow(QMainWindow):
         load_mode = traffic_state.get("esal_load_mode", "standard_load")
         lane_count = int(traffic_state.get("standard_lane_count") or 1)
         detail_page = self._page_widgets[1]
-        if detail_page is not None and hasattr(detail_page, "esal_page"):
-            esal_page = detail_page.esal_page
-            load_mode = esal_page.active_esal_load_mode()
-            lane_count = esal_page.active_standard_lane_count()
+        if detail_page is not None:
+            esal_page = getattr(detail_page, "esal_page", None)
+            if esal_page is not None:
+                load_mode = esal_page.active_esal_load_mode()
+                lane_count = esal_page.active_standard_lane_count()
 
         traffic_state["esal_load_mode"] = load_mode
         traffic_state["standard_lane_count"] = lane_count

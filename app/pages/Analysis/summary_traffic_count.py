@@ -1,7 +1,6 @@
 """Summary Traffic count data subpage."""
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
@@ -14,6 +13,7 @@ from PyQt6.QtWidgets import (
 from app.core.ui_scale import UiScale
 from app.core.ui_style import card_title_style
 from app.services.traffic_excel import sum_d1_d2_vehicle_group_totals
+from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 from app.widgets.traffic_charts import TrafficTotalLineChart, TrafficVehicleGroupPieChart
 from app.widgets.traffic_results import refresh_theme_widgets, result_card
 from app.widgets.traffic_summary_table import traffic_count_summary_table
@@ -50,11 +50,10 @@ class SummaryTrafficCountPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
 
         scroll_content = QWidget()
+        fit_scroll_content(scroll_content)
         layout = QVBoxLayout(scroll_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
@@ -83,6 +82,7 @@ class SummaryTrafficCountPage(QWidget):
         layout.addStretch()
 
         scroll.setWidget(scroll_content)
+        configure_page_scroll(scroll)
         outer_layout.addWidget(scroll)
         self.refresh_ui_scale()
 
