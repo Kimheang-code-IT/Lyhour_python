@@ -19,6 +19,7 @@ from app.chart import (
 from app.data.dcp_analysis import (
     DcpInputRow,
     analyze_dcp_rows,
+    build_layered_cbr_summary,
     summarize_dcp_analysis,
 )
 from app.pages.Subgrade_Design.common import (
@@ -35,7 +36,7 @@ from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 
 
 class DcpPage(QWidget):
-    """DCP input table + analysis table and charts."""
+    """DCP input table + analysis table, charts, and layered CBR summary."""
 
     _INPUT_HEADERS = ["Number of Blow", "Total Penetration (mm)"]
     _ANALYSIS_HEADERS = [
@@ -45,6 +46,14 @@ class DcpPage(QWidget):
         "Change in Penetration (mm)",
         "Penetration Index (mm/blow)",
         "CBR (%)",
+    ]
+    _LAYERED_HEADERS = [
+        "Depth (mm)",
+        "Layer Thickness (mm)",
+        "Total Blows",
+        "Blows / 300 mm",
+        "Layered-CBR (%)",
+        "Remark",
     ]
 
     def __init__(self, parent=None):
@@ -78,6 +87,10 @@ class DcpPage(QWidget):
                 )
             )
         return rows
+
+    def read_layered_cbr_summary(self):
+        """Layered CBR Summary rows used by CBR Equivalent (Use DCP data)."""
+        return build_layered_cbr_summary(analyze_dcp_rows(self.read_input_rows()))
 
     def _build_input_block(self) -> QFrame:
         frame, section_layout = section_frame("Input")
@@ -143,6 +156,22 @@ class DcpPage(QWidget):
         charts_row.addWidget(self.cbr_chart, 1)
 
         section_layout.addLayout(charts_row)
+
+        layered_title = QLabel("Layered CBR Summary")
+        layered_title.setStyleSheet("color: #cccccc; font-weight: 600; font-size: 14px;")
+        section_layout.addWidget(layered_title)
+
+        self.layered_table = QTableWidget(0, len(self._LAYERED_HEADERS))
+        self.layered_table.setHorizontalHeaderLabels(self._LAYERED_HEADERS)
+        self.layered_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.layered_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.layered_table.setAlternatingRowColors(True)
+        self.layered_table.setMinimumHeight(220)
+        self.layered_table.setMaximumHeight(320)
+        configure_page_scroll(self.layered_table)
+        configure_subgrade_table(self.layered_table)
+        section_layout.addWidget(self.layered_table)
+
         return frame
 
     def _seed_sample_data(self) -> None:
@@ -192,6 +221,37 @@ class DcpPage(QWidget):
 
         apply_subgrade_row_heights(self.analysis_table)
         self._refresh_charts(analysis_rows)
+        self._refresh_layered_summary(analysis_rows)
+
+    def _refresh_layered_summary(self, analysis_rows) -> None:
+        summary_rows = build_layered_cbr_summary(analysis_rows)
+        self.layered_table.setRowCount(len(summary_rows))
+
+        for row_index, row in enumerate(summary_rows):
+            values = [
+                format_number(row.depth_mm, decimals=0),
+                (
+                    format_number(row.layer_thickness_mm, decimals=0)
+                    if row.layer_thickness_mm is not None
+                    else "—"
+                ),
+                format_number(row.total_blows, decimals=0),
+                (
+                    format_number(row.blows_per_300_mm, decimals=2)
+                    if row.blows_per_300_mm is not None
+                    else "—"
+                ),
+                (
+                    format_number(row.layered_cbr_percent, decimals=2)
+                    if row.layered_cbr_percent is not None
+                    else "—"
+                ),
+                row.remark or "",
+            ]
+            for col_index, text in enumerate(values):
+                self.layered_table.setItem(row_index, col_index, subgrade_table_item(text))
+
+        apply_subgrade_row_heights(self.layered_table)
 
     def _refresh_charts(self, analysis_rows) -> None:
         for chart in (self.blows_chart, self.cbr_chart):

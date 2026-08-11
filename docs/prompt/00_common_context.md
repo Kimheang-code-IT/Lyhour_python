@@ -68,7 +68,8 @@ Shell pages compose those subpages (segmented tabs + quick panel).
 | Section | Pages |
 |---------|-------|
 | Traffic Analysis | Input, Analysis |
-| Road Geometry Design | Cross Section, Horizontal Curvature, Superelevation, Vertical Curve, Subgrade Design |
+| Road Geometry Design | Cross Section, Horizontal Curvature, Superelevation, Vertical Curve |
+| Subgrade Design | DCP, CBR Equivalent, FWD/BB |
 | Pavement and Material Design | Flexible, Rigid, Material Design |
 | Pavement Evaluation | Pavement Evaluation |
 | Intersection Design | Taper, Accelerations, Decelerations |
@@ -78,7 +79,7 @@ Route keys live in `app/core/page_registry.py`.
 ## UI conventions
 
 - **Theme:** dark/light via `theme_tokens()`; charts must use theme colors.
-- **Quick Result panel:** fixed right panel on Horizontal Curvature, Superelevation, Subgrade Design, Flexible Pavement (`FIXED_RIGHT_PANEL_PAGES`).
+- **Quick Result panel:** fixed right panel on Horizontal Curvature, Superelevation, Subgrade Design (DCP / CBR / FWD/BB), Flexible Pavement (`FIXED_RIGHT_PANEL_PAGES`).
 - **Forms:** use `make_double_spin`, `make_combo`, `add_labeled_row`, `secondary_button`.
 - **Tables:** prefer `ExcelPasteTable` for paste-from-Excel inputs; style consistently.
 - **Mouse wheel:** do not change spin/combo values via wheel (project convention).

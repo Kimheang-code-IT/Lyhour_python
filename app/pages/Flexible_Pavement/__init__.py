@@ -1,7 +1,8 @@
-"""Flexible Pavement subpages (Catalog / Analysis, AASHTO)."""
+"""Flexible Pavement subpages (Catalog / Analysis, AASHTO, MPWT)."""
 
 from app.pages.Flexible_Pavement.aashto import AashtoPage
 from app.pages.Flexible_Pavement.catalog_analysis import CatalogAnalysisPage
+from app.pages.Flexible_Pavement.mpwt import MpwtPage
 from app.pages.Flexible_Pavement.page import FlexiblePavementPage
 
-__all__ = ("AashtoPage", "CatalogAnalysisPage", "FlexiblePavementPage")
+__all__ = ("AashtoPage", "CatalogAnalysisPage", "FlexiblePavementPage", "MpwtPage")

@@ -27,6 +27,7 @@ MODULUS_SUMMARY_FONT_SIZE = 13
 
 TAB_CATALOG = 0
 TAB_AASHTO = 1
+TAB_MPWT = 2
 
 
 def set_input_height(widget) -> None:

@@ -13,23 +13,38 @@ RGD_CROSS_SECTION = 2
 RGD_HORIZONTAL_CURVATURE = 3
 RGD_SUPERELEVATION = 4
 RGD_VERTICAL_CURVE = 5
-RGD_SUBGRADE_DESIGN = 6
-FLEXIBLE_PAVEMENT = 7
-RIGID_PAVEMENT = 8
-MATERIAL_DESIGN = 9
-PAVEMENT_EVALUATION = 10
-INTERSECTION_TAPER = 11
-INTERSECTION_ACCELERATIONS = 12
-INTERSECTION_DECELERATIONS = 13
+SUBGRADE_DCP = 6
+SUBGRADE_CBR = 7
+SUBGRADE_FWD = 8
+FLEXIBLE_PAVEMENT = 9
+RIGID_PAVEMENT = 10
+MATERIAL_DESIGN = 11
+PAVEMENT_EVALUATION = 12
+INTERSECTION_TAPER = 13
+INTERSECTION_ACCELERATIONS = 14
+INTERSECTION_DECELERATIONS = 15
 
-PAGE_COUNT = 14
+PAGE_COUNT = 16
+
+# Back-compat aliases
+RGD_SUBGRADE_DESIGN = SUBGRADE_DCP
+RIGID_MPWT = RIGID_PAVEMENT
+RIGID_AASHTO = RIGID_PAVEMENT
 
 TRAFFIC_PAGES = frozenset({TRAFFIC_INPUT, TRAFFIC_ANALYSIS})
+PAGES_WITHOUT_PREVIEW = frozenset({
+    TRAFFIC_INPUT,
+    TRAFFIC_ANALYSIS,
+    RGD_CROSS_SECTION,
+})
 FIXED_RIGHT_PANEL_PAGES = frozenset({
     RGD_HORIZONTAL_CURVATURE,
     RGD_SUPERELEVATION,
-    RGD_SUBGRADE_DESIGN,
+    SUBGRADE_DCP,
+    SUBGRADE_CBR,
+    SUBGRADE_FWD,
     FLEXIBLE_PAVEMENT,
+    RIGID_PAVEMENT,
 })
 
 ROUTE_TO_PAGE: dict[str, int] = {
@@ -39,7 +54,9 @@ ROUTE_TO_PAGE: dict[str, int] = {
     "rgd_horizontal_curvature": RGD_HORIZONTAL_CURVATURE,
     "rgd_superelevation_design": RGD_SUPERELEVATION,
     "rgd_vertical_curve": RGD_VERTICAL_CURVE,
-    "rgd_subgrade_design": RGD_SUBGRADE_DESIGN,
+    "subgrade_dcp": SUBGRADE_DCP,
+    "subgrade_cbr_equivalent": SUBGRADE_CBR,
+    "subgrade_fwd_bb": SUBGRADE_FWD,
     "flexible_pavement": FLEXIBLE_PAVEMENT,
     "rigid_pavement": RIGID_PAVEMENT,
     "material_design": MATERIAL_DESIGN,
@@ -51,17 +68,18 @@ ROUTE_TO_PAGE: dict[str, int] = {
 
 PAGE_TO_ROUTE: dict[int, str] = {index: route for route, index in ROUTE_TO_PAGE.items()}
 
-# Nuxt-style layout name per stack index (see app/layouts/).
 PAGE_LAYOUTS: dict[int, str] = {
     TRAFFIC_INPUT: "blank",
     TRAFFIC_ANALYSIS: "blank",
-    RGD_CROSS_SECTION: "default",
+    RGD_CROSS_SECTION: "blank",
     RGD_HORIZONTAL_CURVATURE: "blank",
     RGD_SUPERELEVATION: "blank",
     RGD_VERTICAL_CURVE: "default",
-    RGD_SUBGRADE_DESIGN: "blank",
+    SUBGRADE_DCP: "blank",
+    SUBGRADE_CBR: "blank",
+    SUBGRADE_FWD: "blank",
     FLEXIBLE_PAVEMENT: "blank",
-    RIGID_PAVEMENT: "default",
+    RIGID_PAVEMENT: "blank",
     MATERIAL_DESIGN: "default",
     PAVEMENT_EVALUATION: "default",
     INTERSECTION_TAPER: "default",
@@ -72,6 +90,7 @@ PAGE_LAYOUTS: dict[int, str] = {
 NAV_FOLDER_ROUTE_KEYS = frozenset({
     "traffic_analysis",
     "road_geometry_design",
+    "subgrade_design",
     "pavement_material_design",
     "intersection_design",
 })
@@ -79,6 +98,7 @@ NAV_FOLDER_ROUTE_KEYS = frozenset({
 NAV_FOLDER_LABELS = frozenset({
     "Traffic Analysis",
     "Road Geometry Design",
+    "Subgrade Design",
     "Pavement and Material Design",
     "Intersection Design",
 })
@@ -98,7 +118,9 @@ SEARCH_PAGES: tuple[SearchPageEntry, ...] = (
     SearchPageEntry("rgd_horizontal_curvature", "road_geometry_design", RGD_HORIZONTAL_CURVATURE),
     SearchPageEntry("rgd_superelevation_design", "road_geometry_design", RGD_SUPERELEVATION),
     SearchPageEntry("rgd_vertical_curve", "road_geometry_design", RGD_VERTICAL_CURVE),
-    SearchPageEntry("rgd_subgrade_design", "rgd_subgrade_design", RGD_SUBGRADE_DESIGN),
+    SearchPageEntry("subgrade_dcp", "subgrade_design", SUBGRADE_DCP),
+    SearchPageEntry("subgrade_cbr_equivalent", "subgrade_design", SUBGRADE_CBR),
+    SearchPageEntry("subgrade_fwd_bb", "subgrade_design", SUBGRADE_FWD),
     SearchPageEntry("flexible_pavement", "pavement_material_design", FLEXIBLE_PAVEMENT),
     SearchPageEntry("rigid_pavement", "pavement_material_design", RIGID_PAVEMENT),
     SearchPageEntry("material_design", "pavement_material_design", MATERIAL_DESIGN),
@@ -110,12 +132,6 @@ SEARCH_PAGES: tuple[SearchPageEntry, ...] = (
 
 
 def build_page_factories() -> list[Callable[[QWidget], QWidget]]:
-    """Return lazy page constructors in stack index order.
-
-    Each factory imports its page module only on first open (faster startup /
-    first navigation to unrelated pages).
-    """
-
     def _traffic_input(parent: QWidget) -> QWidget:
         from app.pages.Traffic_Analysis_input import TrafficAnalysisInputPage
 
@@ -146,10 +162,20 @@ def build_page_factories() -> list[Callable[[QWidget], QWidget]]:
 
         return RGDVerticalCurvePage(parent)
 
-    def _subgrade(parent: QWidget) -> QWidget:
-        from app.pages.RGD_Subgrade_Design import RGDSubgradeDesignPage
+    def _subgrade_dcp(parent: QWidget) -> QWidget:
+        from app.pages.Subgrade_DCP import SubgradeDcpPage
 
-        return RGDSubgradeDesignPage(parent)
+        return SubgradeDcpPage(parent)
+
+    def _subgrade_cbr(parent: QWidget) -> QWidget:
+        from app.pages.Subgrade_CBR import SubgradeCbrPage
+
+        return SubgradeCbrPage(parent)
+
+    def _subgrade_fwd(parent: QWidget) -> QWidget:
+        from app.pages.Subgrade_FWD import SubgradeFwdPage
+
+        return SubgradeFwdPage(parent)
 
     def _flexible(parent: QWidget) -> QWidget:
         from app.pages.Flexible_Pavement import FlexiblePavementPage
@@ -193,7 +219,9 @@ def build_page_factories() -> list[Callable[[QWidget], QWidget]]:
         _horizontal,
         _superelevation,
         _vertical,
-        _subgrade,
+        _subgrade_dcp,
+        _subgrade_cbr,
+        _subgrade_fwd,
         _flexible,
         _rigid,
         _material,

@@ -26,7 +26,7 @@ CHART_MIN_HEIGHT = 340
 
 TAB_DCP = 0
 TAB_CBR_EQUIVALENT = 1
-TAB_FWD = 2
+TAB_FWD = 2  # FWD/BB
 
 
 def format_number(value: float | None, *, decimals: int = 2) -> str:

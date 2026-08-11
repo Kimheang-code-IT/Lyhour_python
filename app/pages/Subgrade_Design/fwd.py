@@ -8,15 +8,15 @@ from app.pages.Subgrade_Design.common import section_frame
 
 
 class FwdPage(QWidget):
-    """FWD analysis placeholder."""
+    """FWD/BB analysis placeholder."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        frame, section_layout = section_frame("FWD")
-        message = QLabel("FWD analysis will be added here.")
+        frame, section_layout = section_frame("FWD/BB")
+        message = QLabel("FWD/BB analysis will be added here.")
         message.setStyleSheet("color: #888888; font-size: 14px; padding: 24px;")
         message.setAlignment(Qt.AlignmentFlag.AlignCenter)
         section_layout.addWidget(message)

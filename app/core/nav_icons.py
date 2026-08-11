@@ -12,8 +12,11 @@ NAV_ROUTE_ICONS: dict[str, FluentIcon] = {
     "rgd_horizontal_curvature": FluentIcon.CONNECT,
     "rgd_superelevation_design": FluentIcon.SPEED_HIGH,
     "rgd_vertical_curve": FluentIcon.CARE_UP_SOLID,
-    # Subgrade Design (main nav)
-    "rgd_subgrade_design": FluentIcon.GLOBE,
+    # Subgrade Design
+    "subgrade_design": FluentIcon.GLOBE,
+    "subgrade_dcp": FluentIcon.EDIT,
+    "subgrade_cbr_equivalent": FluentIcon.PIE_SINGLE,
+    "subgrade_fwd_bb": FluentIcon.SEARCH,
     # Pavement and Material Design
     "pavement_material_design": FluentIcon.BRUSH,
     "flexible_pavement": FluentIcon.BRUSH,

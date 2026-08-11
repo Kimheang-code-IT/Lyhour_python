@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.data.dcp_analysis import DcpAnalysisRow
+from app.data.dcp_analysis import DcpAnalysisRow, DcpLayeredSummaryRow
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ def evaluate_layered_cbr(cbr_percent: float | None) -> str:
 
 
 def build_dcp_cbr_display_rows(rows: list[DcpAnalysisRow]) -> list[DcpCbrDisplayRow]:
-    """Map DCP analysis rows to the English CBR input table."""
+    """Map raw DCP analysis rows to the English CBR input table (legacy)."""
     display: list[DcpCbrDisplayRow] = []
     for row in rows:
         display.append(
@@ -202,6 +202,43 @@ def compute_cbr_equivalent_from_user_layers(
 
     design_depth = depth_limit if depth_limit is not None else cursor
     return _result_from_layer_parts(parts, design_depth_mm=design_depth)
+
+
+def display_rows_from_layered_summary(
+    rows: list[DcpLayeredSummaryRow],
+) -> list[DcpCbrDisplayRow]:
+    """Map DCP Layered CBR Summary rows into the Use-DCP-data table."""
+    return [
+        DcpCbrDisplayRow(
+            depth_mm=float(row.depth_mm),
+            thickness_mm=row.layer_thickness_mm,
+            total_blows=float(row.total_blows),
+            penetration_rate_mm_per_blow=row.blows_per_300_mm,
+            layered_cbr_percent=row.layered_cbr_percent,
+            evaluation=row.remark or evaluate_layered_cbr(row.layered_cbr_percent),
+        )
+        for row in rows
+    ]
+
+
+def compute_cbr_equivalent_from_layered_summary(
+    rows: list[DcpLayeredSummaryRow],
+    *,
+    design_depth_mm: float | None = None,
+) -> CbrEquivalentResult | None:
+    """Thickness-weighted CBR from DCP Layered CBR Summary rows."""
+    layers: list[tuple[float, float]] = []
+    for row in rows:
+        if row.layer_thickness_mm is None or row.layered_cbr_percent is None:
+            continue
+        thickness = float(row.layer_thickness_mm)
+        if thickness <= 0:
+            continue
+        layers.append((float(row.layered_cbr_percent), thickness))
+    return compute_cbr_equivalent_from_user_layers(
+        layers,
+        design_depth_mm=design_depth_mm,
+    )
 
 
 def format_cbr_equivalent_result(result: CbrEquivalentResult | None) -> str:

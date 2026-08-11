@@ -8,7 +8,7 @@ Road Geometry Design — typical / design cross-section tools (lane width, shoul
 
 ## Status
 
-**Placeholder** (BasePage shell only).
+**Partial** — Input + live Design cross-section diagram implemented.
 
 ## Route & files
 
@@ -17,18 +17,26 @@ Road Geometry Design — typical / design cross-section tools (lane width, shoul
 | Route key | `rgd_cross_section` |
 | Stack index | `RGD_CROSS_SECTION` |
 | Page file | `app/pages/RGD_Cross_Section.py` |
-| Layout | `default` |
+| Layout | `blank` |
+| Data | `app/data/cross_section.py` → `build_cross_section` |
+| Chart | `app/chart/cross_section.py` → `draw_cross_section` |
 
-## Planned direction (when implementing)
+## Current UI
 
-- Input: road class, lane/shoulder widths, crossfall, side slopes
-- Output: dimensioned cross-section diagram
-- Chart: new reusable drawer in `app/chart/` (e.g. `cross_section.py`)
-- Data: `app/data/` for geometry calculations
+- No Quick Result button, no right preview image (`PAGES_WITHOUT_PREVIEW`)
+- **Input** block:
+  - Road classification select: `R1/U1` … `R6/U6`
+  - Design speed (km/h)
+  - Lane (m)
+  - Shoulder (m)
+- **Design** block: dynamic cross-section (cut / shoulder / lanes / median / shoulder / fill)
+  - Lane & shoulder widths from inputs
+  - Lanes per direction + median width derived from road class / speed
+  - Dimension labels, cross-slope %, direction arrows
 
 ## Agent rules
 
-1. Do not leave a silent empty page — keep a clear section title when adding UI.
-2. Follow Horizontal Curvature / Superelevation patterns for Input + Analysis blocks.
-3. Prefer engineering diagram style (labels, dimensions), not dashboard cards.
-4. Register any new chart in `app/chart/__init__.py`.
+1. Keep Input + Design two-block layout.
+2. Do not add Quick Result / preview image to this page.
+3. Keep formulas in `app/data/cross_section.py`; drawing in `app/chart/cross_section.py`.
+4. Prefer engineering diagram style (labels, dimensions), not dashboard cards.

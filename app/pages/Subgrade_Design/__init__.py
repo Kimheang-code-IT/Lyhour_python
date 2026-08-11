@@ -1,4 +1,4 @@
-"""Subgrade Design subpages (DCP / CBR / FWD)."""
+"""Subgrade Design content widgets (DCP / CBR / FWD/BB)."""
 
 from app.pages.Subgrade_Design.cbr import CbrPage
 from app.pages.Subgrade_Design.dcp import DcpPage

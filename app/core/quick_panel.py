@@ -175,6 +175,44 @@ class QuickPanel(QFrame):
         ]
         self._set_schema(fields)
 
+    def set_flexible_mpwt_schema(self) -> None:
+        """Schema for Flexible Pavement MPWT tab."""
+        self.set_wide_width()
+        fields = [
+            ("Required SN", "Required Total SN ="),
+            ("Total SN", "Total SN (selected) ="),
+            ("HMA h1", "HMA thickness h₁ ="),
+            ("Base h2", "Base thickness h₂ ="),
+            ("Subbase h3", "Subbase thickness h₃ ="),
+            ("Design check", "Design check ="),
+        ]
+        self._set_schema(fields)
+
+    def set_rigid_mpwt_schema(self) -> None:
+        """Schema for Rigid Pavement MPWT page."""
+        self.set_wide_width()
+        fields = [
+            ("Trial thickness", "Trial thickness ="),
+            ("Minimum thickness", "Minimum thickness ="),
+            ("Fatigue damage", "Fatigue damage ="),
+            ("Erosion damage", "Erosion damage ="),
+            ("Design status", "Design status ="),
+        ]
+        self._set_schema(fields)
+
+    def set_rigid_aashto_schema(self) -> None:
+        """Schema for Rigid Pavement AASHTO page."""
+        self.set_wide_width()
+        fields = [
+            ("Effective k", "Effective k ="),
+            ("Corrected k", "Corrected k ="),
+            ("Required thickness", "Required thickness ="),
+            ("Final thickness", "Final thickness ="),
+            ("Verification", "Verification ="),
+        ]
+        self._set_schema(fields)
+
+
     def set_results(self, results: dict | None) -> None:
         for key, label in self._result_labels.items():
             prefix = self._result_names[key]

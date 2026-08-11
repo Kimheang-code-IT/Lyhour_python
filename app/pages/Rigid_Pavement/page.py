@@ -1,4 +1,4 @@
-"""Pavement and Material Design > Flexible Pavement."""
+"""Pavement and Material Design > Rigid Pavement (MPWT / AASHTO tabs)."""
 from __future__ import annotations
 
 from PyQt6.QtGui import QShowEvent
@@ -15,19 +15,19 @@ from qfluentwidgets import SegmentedWidget
 
 from app.core.ui_style import title_style
 from app.layouts import BasePage, define_page
-from app.pages.Flexible_Pavement.common import TAB_AASHTO, TAB_CATALOG, TAB_MPWT
+from app.pages.Rigid_Pavement.common import TAB_AASHTO, TAB_MPWT
 from app.widgets.button import secondary_button
 
 
-@define_page("blank", title="Flexible Pavement")
-class FlexiblePavementPage(BasePage):
+@define_page("blank", title="Rigid Pavement")
+class RigidPavementPage(BasePage):
     def setup(self, content: QVBoxLayout) -> None:
         content.setContentsMargins(24, 24, 24, 24)
         content.setSpacing(12)
 
         title_row = QHBoxLayout()
         title_row.setSpacing(12)
-        self._page_title = QLabel("Flexible Pavement")
+        self._page_title = QLabel("Rigid Pavement")
         self._page_title.setStyleSheet(title_style(22))
         title_row.addWidget(self._page_title)
         title_row.addStretch()
@@ -37,18 +37,16 @@ class FlexiblePavementPage(BasePage):
         content.addLayout(title_row)
 
         self.segmented = SegmentedWidget(self)
-        self.segmented.setObjectName("flexiblePavementSegmented")
+        self.segmented.setObjectName("rigidPavementSegmented")
         self.stack = QStackedWidget(self)
         self.stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        self.catalog_page = None
-        self.aashto_page = None
         self.mpwt_page = None
+        self.aashto_page = None
 
         tab_defs = (
-            ("catalog_analysis", "Catalog/Analysis"),
-            ("aashto", "AASHTO"),
             ("mpwt", "MPWT"),
+            ("aashto", "AASHTO"),
         )
         for index, (route_key, text) in enumerate(tab_defs):
             self.segmented.addItem(
@@ -61,9 +59,9 @@ class FlexiblePavementPage(BasePage):
         content.addWidget(self.segmented)
         content.addWidget(self.stack, 1)
 
-        self.segmented.setCurrentItem("catalog_analysis")
-        self._ensure_tab(TAB_CATALOG)
-        self.stack.setCurrentIndex(TAB_CATALOG)
+        self.segmented.setCurrentItem("mpwt")
+        self._ensure_tab(TAB_MPWT)
+        self.stack.setCurrentIndex(TAB_MPWT)
         self._push_quick_results()
 
     def _replace_stack_page(self, index: int, page: QWidget) -> None:
@@ -75,34 +73,24 @@ class FlexiblePavementPage(BasePage):
         self.stack.setCurrentIndex(index)
 
     def _ensure_tab(self, index: int) -> None:
-        if index == TAB_CATALOG:
-            if self.catalog_page is not None:
+        if index == TAB_MPWT:
+            if self.mpwt_page is not None:
                 return
-            from app.pages.Flexible_Pavement.catalog_analysis import CatalogAnalysisPage
+            from app.pages.Rigid_Pavement.mpwt import MpwtRigidPanel
 
-            self.catalog_page = CatalogAnalysisPage()
-            self._replace_stack_page(TAB_CATALOG, self.catalog_page)
-            self.catalog_page.connect_inputs_changed(self._push_quick_results)
+            self.mpwt_page = MpwtRigidPanel()
+            self._replace_stack_page(TAB_MPWT, self.mpwt_page)
+            self.mpwt_page.connect_inputs_changed(self._push_quick_results)
             return
 
         if index == TAB_AASHTO:
             if self.aashto_page is not None:
                 return
-            from app.pages.Flexible_Pavement.aashto import AashtoPage
+            from app.pages.Rigid_Pavement.aashto import AashtoRigidPanel
 
-            self.aashto_page = AashtoPage()
+            self.aashto_page = AashtoRigidPanel()
             self._replace_stack_page(TAB_AASHTO, self.aashto_page)
             self.aashto_page.connect_inputs_changed(self._push_quick_results)
-            return
-
-        if index == TAB_MPWT:
-            if self.mpwt_page is not None:
-                return
-            from app.pages.Flexible_Pavement.mpwt import MpwtPage
-
-            self.mpwt_page = MpwtPage()
-            self._replace_stack_page(TAB_MPWT, self.mpwt_page)
-            self.mpwt_page.connect_inputs_changed(self._push_quick_results)
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
@@ -122,10 +110,8 @@ class FlexiblePavementPage(BasePage):
         index = self.stack.currentIndex()
         if index == TAB_AASHTO and self.aashto_page is not None:
             return self.aashto_page.quick_results()
-        if index == TAB_MPWT and self.mpwt_page is not None:
+        if self.mpwt_page is not None:
             return self.mpwt_page.quick_results()
-        if self.catalog_page is not None:
-            return self.catalog_page.quick_results()
         return {}
 
     def _setup_quick_panel(self) -> None:
@@ -133,12 +119,10 @@ class FlexiblePavementPage(BasePage):
         if not hasattr(mw, "quick_panel"):
             return
         index = self.stack.currentIndex()
-        if index == TAB_CATALOG and hasattr(mw.quick_panel, "set_flexible_catalog_schema"):
-            mw.quick_panel.set_flexible_catalog_schema()
-        elif index == TAB_MPWT and hasattr(mw.quick_panel, "set_flexible_mpwt_schema"):
-            mw.quick_panel.set_flexible_mpwt_schema()
-        elif hasattr(mw.quick_panel, "set_flexible_pavement_schema"):
-            mw.quick_panel.set_flexible_pavement_schema()
+        if index == TAB_AASHTO and hasattr(mw.quick_panel, "set_rigid_aashto_schema"):
+            mw.quick_panel.set_rigid_aashto_schema()
+        elif hasattr(mw.quick_panel, "set_rigid_mpwt_schema"):
+            mw.quick_panel.set_rigid_mpwt_schema()
         mw.quick_panel.set_results(self._results())
 
     def _push_quick_results(self) -> None:

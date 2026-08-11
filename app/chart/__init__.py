@@ -14,6 +14,7 @@ Import charts from here so any page can reuse the same drawing logic:
 
 from app.chart.base import MatplotlibChartWidget, apply_axes_theme, draw_empty_message, make_matplotlib_chart
 from app.chart.cbr_equivalent import draw_cbr_equivalent_profile
+from app.chart.cross_section import draw_cross_section
 from app.chart.dcp import draw_dcp_depth_vs_blows, draw_dcp_depth_vs_cbr
 from app.chart.pavement_catalog import draw_pavement_catalog_section
 from app.chart.simple_curve import draw_simple_curve_diagram
@@ -35,6 +36,7 @@ __all__ = (
     "apply_axes_theme",
     "configure_superelevation_y_axis",
     "draw_cbr_equivalent_profile",
+    "draw_cross_section",
     "draw_dcp_depth_vs_blows",
     "draw_dcp_depth_vs_cbr",
     "draw_empty_message",

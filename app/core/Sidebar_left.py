@@ -21,12 +21,14 @@ from app.core.page_registry import (
     NAV_FOLDER_ROUTE_KEYS,
     PAGE_TO_ROUTE,
     PAVEMENT_EVALUATION,
-    RIGID_PAVEMENT,
     RGD_CROSS_SECTION,
     RGD_HORIZONTAL_CURVATURE,
     RGD_SUPERELEVATION,
     RGD_VERTICAL_CURVE,
-    RGD_SUBGRADE_DESIGN,
+    RIGID_PAVEMENT,
+    SUBGRADE_CBR,
+    SUBGRADE_DCP,
+    SUBGRADE_FWD,
     TRAFFIC_ANALYSIS,
     TRAFFIC_INPUT,
 )
@@ -230,12 +232,28 @@ class SidebarLeft(QFrame):
             parent_route_key="road_geometry_design",
         )
 
-        self.navigation.addItem(
-            routeKey="rgd_subgrade_design",
-            icon=nav_icon("rgd_subgrade_design"),
-            text=nav_label("rgd_subgrade_design"),
-            onClick=lambda *_args: self._navigate_to(RGD_SUBGRADE_DESIGN),
-            position=scroll,
+        self._add_folder(
+            route_key="subgrade_design",
+            text=nav_label("subgrade_design"),
+            default_page_index=SUBGRADE_DCP,
+        )
+        self._add_page_item(
+            route_key="subgrade_dcp",
+            text=nav_label("subgrade_dcp"),
+            page_index=SUBGRADE_DCP,
+            parent_route_key="subgrade_design",
+        )
+        self._add_page_item(
+            route_key="subgrade_cbr_equivalent",
+            text=nav_label("subgrade_cbr_equivalent"),
+            page_index=SUBGRADE_CBR,
+            parent_route_key="subgrade_design",
+        )
+        self._add_page_item(
+            route_key="subgrade_fwd_bb",
+            text=nav_label("subgrade_fwd_bb"),
+            page_index=SUBGRADE_FWD,
+            parent_route_key="subgrade_design",
         )
 
         self._add_folder(

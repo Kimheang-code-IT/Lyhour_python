@@ -22,13 +22,13 @@ from PyQt6.QtWidgets import (
 from app.core.theme import theme_tokens
 from app.core.ui_scale import UiScale
 from app.data.cbr_equivalent import (
-    build_dcp_cbr_display_rows,
-    compute_cbr_equivalent,
+    compute_cbr_equivalent_from_layered_summary,
     compute_cbr_equivalent_from_user_layers,
+    display_rows_from_layered_summary,
     format_cbr_equivalent_result,
     summarize_cbr_equivalent,
 )
-from app.data.dcp_analysis import analyze_dcp_rows
+from app.data.dcp_analysis import analyze_dcp_rows, build_layered_cbr_summary
 from app.pages.Subgrade_Design.common import (
     BLOCK_SPACING,
     apply_subgrade_row_heights,
@@ -123,11 +123,12 @@ class CbrPage(QWidget):
 
     results_changed = pyqtSignal()
 
-    def __init__(self, dcp_page: DcpPage, parent=None):
+    def __init__(self, dcp_page: DcpPage | None = None, parent=None, *, dcp_provider=None):
         super().__init__(parent)
         expand_vertical(self)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._dcp_page = dcp_page
+        self._dcp_provider = dcp_provider
         self._mode = MODE_DCP
 
         layout = QVBoxLayout(self)
@@ -154,14 +155,33 @@ class CbrPage(QWidget):
     def refresh_analysis(self) -> None:
         self._refresh_analysis()
 
+    def _resolve_dcp_page(self) -> DcpPage | None:
+        if self._dcp_page is not None:
+            return self._dcp_page
+        if self._dcp_provider is not None:
+            return self._dcp_provider()
+        return None
+
     def _current_result(self):
         if self._mode == MODE_USER:
             return compute_cbr_equivalent_from_user_layers(
                 self._read_user_layers(),
                 design_depth_mm=None,
             )
-        rows = analyze_dcp_rows(self._dcp_page.read_input_rows())
-        return compute_cbr_equivalent(rows, design_depth_mm=None)
+        summary = self._read_layered_summary()
+        return compute_cbr_equivalent_from_layered_summary(
+            summary,
+            design_depth_mm=None,
+        )
+
+    def _read_layered_summary(self):
+        dcp = self._resolve_dcp_page()
+        if dcp is None:
+            return []
+        if hasattr(dcp, "read_layered_cbr_summary"):
+            return dcp.read_layered_cbr_summary()
+        # Fallback if only raw input rows are available.
+        return build_layered_cbr_summary(analyze_dcp_rows(dcp.read_input_rows()))
 
     def _build_input_block(self) -> QFrame:
         frame, section_layout = section_frame("Input")
@@ -271,17 +291,29 @@ class CbrPage(QWidget):
         return layers
 
     def _populate_dcp_table(self) -> None:
-        rows = analyze_dcp_rows(self._dcp_page.read_input_rows())
-        display_rows = build_dcp_cbr_display_rows(rows)
+        summary_rows = self._read_layered_summary()
+        display_rows = display_rows_from_layered_summary(summary_rows)
         self.dcp_table.setRowCount(len(display_rows))
 
         for row_index, row in enumerate(display_rows):
             values = [
                 format_number(row.depth_mm, decimals=0),
-                format_number(row.thickness_mm, decimals=0),
+                (
+                    format_number(row.thickness_mm, decimals=0)
+                    if row.thickness_mm is not None
+                    else "—"
+                ),
                 format_number(row.total_blows, decimals=0),
-                format_number(row.penetration_rate_mm_per_blow),
-                format_number(row.layered_cbr_percent),
+                (
+                    format_number(row.penetration_rate_mm_per_blow)
+                    if row.penetration_rate_mm_per_blow is not None
+                    else "—"
+                ),
+                (
+                    format_number(row.layered_cbr_percent)
+                    if row.layered_cbr_percent is not None
+                    else "—"
+                ),
                 row.evaluation or "—",
             ]
             for col_index, text in enumerate(values):
