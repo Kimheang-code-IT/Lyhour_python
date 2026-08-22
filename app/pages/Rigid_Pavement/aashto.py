@@ -1,6 +1,8 @@
 """Rigid Pavement > AASHTO 1993 design page content (Excel ASSHTO93 layout)."""
 from __future__ import annotations
 
+import math
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
@@ -36,7 +38,7 @@ from app.pages.Rigid_Pavement.common import (
     set_input_height,
     value_box,
 )
-from app.widgets.form_controls import make_double_spin
+from app.widgets.form_controls import make_combo, make_double_spin
 from app.widgets.labeled_input import add_labeled_row
 from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 
@@ -83,6 +85,7 @@ class AashtoRigidPanel(QWidget):
         layout.addWidget(self._build_given_block())
         layout.addWidget(self._build_modulus_block())
         layout.addWidget(self._build_thickness_block())
+        layout.addWidget(self._build_reinforcement_block())
         layout.addStretch(0)
 
         scroll.setWidget(content)
@@ -136,6 +139,15 @@ class AashtoRigidPanel(QWidget):
             self._style_input(spin)
         spin.valueChanged.connect(self._on_changed)
         return spin
+
+    def _make_combo(self, items: tuple[str, ...], current: str):
+        combo = make_combo(list(items))
+        set_input_height(combo)
+        idx = combo.findText(current)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+        combo.currentTextChanged.connect(self._on_changed)
+        return combo
 
     def _param_pair(self, symbol: str, spin, unit: str = "") -> QWidget:
         wrap = QWidget()
@@ -416,6 +428,53 @@ class AashtoRigidPanel(QWidget):
         layout.addLayout(final_row)
         return frame
 
+    def _build_reinforcement_block(self) -> QFrame:
+        frame, layout = section_frame("4. Reinforcement Design")
+        note = QLabel(
+            "Prepare reinforcement inputs for later calculation: reinforcement type, "
+            "steel area, bar diameter / spacing, longitudinal & transverse reinforcement, "
+            "reinforcement ratio, and joint information."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #999999;")
+        layout.addWidget(note)
+
+        grid_host = QWidget()
+        grid = QGridLayout(grid_host)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(14)
+        grid.setContentsMargins(0, 0, 0, 0)
+
+        self.reinf_type_combo = self._make_combo(
+            ("Deformed bar", "Wire mesh", "CRCP steel"), "Deformed bar"
+        )
+        self.bar_diameter_spin = self._make_spin(
+            value=16.0, decimals=1, minimum=6.0, maximum=40.0, suffix=" mm", tint=False
+        )
+        self.bar_spacing_spin = self._make_spin(
+            value=200.0, decimals=0, minimum=50.0, maximum=500.0, suffix=" mm", tint=False
+        )
+        self.long_ratio_spin = self._make_spin(
+            value=0.60, decimals=2, minimum=0.0, maximum=5.0, suffix=" %", tint=False
+        )
+        self.trans_ratio_spin = self._make_spin(
+            value=0.20, decimals=2, minimum=0.0, maximum=5.0, suffix=" %", tint=False
+        )
+        self.steel_area_label = QLabel("—")
+        self.steel_area_label.setStyleSheet(
+            f"color: {theme_tokens().accent}; font-weight: 700;"
+        )
+
+        add_labeled_row(grid, 0, "Reinforcement type =", self.reinf_type_combo, ROW_HEIGHT)
+        add_labeled_row(grid, 1, "Bar diameter =", self.bar_diameter_spin, ROW_HEIGHT)
+        add_labeled_row(grid, 2, "Bar spacing =", self.bar_spacing_spin, ROW_HEIGHT)
+        add_labeled_row(grid, 3, "Longitudinal reinforcement ratio =", self.long_ratio_spin, ROW_HEIGHT)
+        add_labeled_row(grid, 4, "Transverse reinforcement ratio =", self.trans_ratio_spin, ROW_HEIGHT)
+        add_labeled_row(grid, 5, "Steel reinforcement area =", self.steel_area_label, ROW_HEIGHT)
+        grid.setColumnStretch(1, 1)
+        layout.addWidget(grid_host)
+        return frame
+
     def _on_changed(self, *_args) -> None:
         if not self._ready:
             return
@@ -534,3 +593,8 @@ class AashtoRigidPanel(QWidget):
                 "background-color: #3e3e40; color: #cccccc; font-weight: 700; "
                 "border-radius: 4px; padding: 4px 14px;"
             )
+
+        dia = float(self.bar_diameter_spin.value())
+        spacing = max(float(self.bar_spacing_spin.value()), 1.0)
+        area = (math.pi * (dia / 2.0) ** 2) * (1000.0 / spacing)
+        self.steel_area_label.setText(f"{area:,.1f} mm²/m")

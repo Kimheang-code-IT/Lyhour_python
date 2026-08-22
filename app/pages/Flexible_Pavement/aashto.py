@@ -31,6 +31,7 @@ from app.pages.Flexible_Pavement.common import (
     set_modulus_spin_height,
     thickness_marker,
 )
+from app.pages.Flexible_Pavement.mpwt import ThicknessSnPanel
 from app.widgets.form_controls import make_double_spin
 from app.widgets.labeled_input import add_labeled_row
 from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
@@ -57,6 +58,9 @@ class AashtoPage(QWidget):
         content_layout.setSpacing(BLOCK_SPACING)
         content_layout.addWidget(self._build_input_block())
         content_layout.addWidget(self._build_modulus_block())
+        self.thickness_panel = ThicknessSnPanel()
+        content_layout.addWidget(self.thickness_panel)
+        content_layout.addStretch(0)
 
         scroll.setWidget(content)
         configure_page_scroll(scroll)
@@ -68,6 +72,7 @@ class AashtoPage(QWidget):
         self._on_changed = callback
         for spin in self._all_input_spins():
             spin.valueChanged.connect(self._notify_changed)
+        self.thickness_panel.connect_inputs_changed(callback)
 
     def _notify_changed(self, *_args) -> None:
         if self._on_changed is not None:
@@ -101,6 +106,7 @@ class AashtoPage(QWidget):
             results["Effective MR"] = f"{modulus.effective_mr_psi:,.0f} psi"
         if modulus.average_relative_damage is not None:
             results["Average uf"] = f"{modulus.average_relative_damage:,.3f}"
+        results.update(self.thickness_panel.quick_results())
         return results
 
     def _build_input_block(self) -> QFrame:

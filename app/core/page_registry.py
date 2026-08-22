@@ -40,6 +40,7 @@ PAGES_WITHOUT_PREVIEW = frozenset({
 FIXED_RIGHT_PANEL_PAGES = frozenset({
     RGD_HORIZONTAL_CURVATURE,
     RGD_SUPERELEVATION,
+    RGD_VERTICAL_CURVE,
     SUBGRADE_DCP,
     SUBGRADE_CBR,
     SUBGRADE_FWD,
@@ -74,7 +75,7 @@ PAGE_LAYOUTS: dict[int, str] = {
     RGD_CROSS_SECTION: "blank",
     RGD_HORIZONTAL_CURVATURE: "blank",
     RGD_SUPERELEVATION: "blank",
-    RGD_VERTICAL_CURVE: "default",
+    RGD_VERTICAL_CURVE: "blank",
     SUBGRADE_DCP: "blank",
     SUBGRADE_CBR: "blank",
     SUBGRADE_FWD: "blank",

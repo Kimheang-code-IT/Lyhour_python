@@ -124,6 +124,21 @@ class QuickPanel(QFrame):
         suffix_m = {"Transition Length Le", "Tro", "Sro", "Curve length"}
         self._set_schema(fields, suffix_m_keys=suffix_m)
 
+    def set_vertical_curve_schema(self) -> None:
+        """Schema for Vertical Curve page."""
+        self.set_wide_width()
+        fields = [
+            ("Curve type", "Curve type ="),
+            ("Length L", "Curve length L ="),
+            ("A", "Algebraic difference A ="),
+            ("Provided K", "Provided K ="),
+            ("Required K", "Required K ="),
+            ("PVC", "PVC station ="),
+            ("PVT", "PVT station ="),
+            ("Check", "AASHTO check ="),
+        ]
+        self._set_schema(fields)
+
     def set_subgrade_schema(self) -> None:
         """Schema for Subgrade Design (DCP) page."""
         self.set_wide_width()
@@ -158,6 +173,12 @@ class QuickPanel(QFrame):
             ("Reliability R0", "Reliability design R0 ="),
             ("Effective MR", "Effective roadbed MR ="),
             ("Average uf", "Average relative damage uf ="),
+            ("Required SN", "Required Total SN ="),
+            ("Total SN", "Total SN (selected) ="),
+            ("HMA h1", "HMA thickness h₁ ="),
+            ("Base h2", "Base thickness h₂ ="),
+            ("Subbase h3", "Subbase thickness h₃ ="),
+            ("Design check", "Design check ="),
         ]
         self._set_schema(fields)
 

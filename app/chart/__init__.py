@@ -27,6 +27,7 @@ from app.chart.superelevation import (
     edge_elevations,
     format_y_tick,
 )
+from app.chart.vertical_curve import draw_vertical_curve
 
 __all__ = (
     "MatplotlibChartWidget",
@@ -43,6 +44,7 @@ __all__ = (
     "draw_pavement_catalog_section",
     "draw_simple_curve_diagram",
     "draw_superelevation_profile",
+    "draw_vertical_curve",
     "edge_elevations",
     "format_y_tick",
     "make_matplotlib_chart",

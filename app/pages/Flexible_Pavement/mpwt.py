@@ -1,4 +1,4 @@
-"""Flexible Pavement > MPWT — thickness of each layer (AASHTO 1993)."""
+"""Flexible Pavement thickness / SN panel (shown on the AASHTO tab)."""
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -7,7 +7,6 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -24,7 +23,6 @@ from app.pages.Flexible_Pavement.common import (
 )
 from app.widgets.form_controls import make_double_spin
 from app.widgets.labeled_input import add_labeled_row
-from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 
 try:
     from qfluentwidgets import BodyLabel
@@ -58,37 +56,24 @@ _EQ_HTML = (
 )
 
 
-class MpwtPage(QWidget):
-    """MPWT tab: structural/drainage coeffs, min thickness, layer SN check."""
+class ThicknessSnPanel(QWidget):
+    """Sections 3.1–3.3: structural/drainage coeffs, min thickness, layer SN check."""
 
     inputs_changed = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._ready = False
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(BLOCK_SPACING)
+        layout.addWidget(self._build_section_31())
+        layout.addWidget(self._build_section_32())
+        layout.addWidget(self._build_section_33())
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-
-        content = QWidget()
-        fit_scroll_content(content)
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(BLOCK_SPACING)
-        content_layout.addWidget(self._build_section_31())
-        content_layout.addWidget(self._build_section_32())
-        content_layout.addWidget(self._build_section_33())
-        content_layout.addStretch(0)
-
-        scroll.setWidget(content)
-        configure_page_scroll(scroll)
-        outer.addWidget(scroll, 1)
-
+        self._ready = True
         self._refresh()
 
     def connect_inputs_changed(self, callback) -> None:
@@ -143,6 +128,8 @@ class MpwtPage(QWidget):
         )
 
     def _notify(self, *_args) -> None:
+        if not self._ready:
+            return
         self._refresh()
         self.inputs_changed.emit()
 
@@ -466,3 +453,29 @@ class MpwtPage(QWidget):
                 f"< {required:.2f} (the required total SN)  →  NG"
             )
         self._apply_status_style(r.design_ok)
+
+
+class MpwtPage(QWidget):
+    """MPWT tab placeholder — thickness design now lives on the AASHTO tab."""
+
+    inputs_changed = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        note = QLabel(
+            "Thickness design (sections 3.1–3.3) is on the AASHTO tab.\n"
+            "MPWT-specific catalog methods can be added here later."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #aaaaaa; font-size: 14px;")
+        layout.addWidget(note)
+        layout.addStretch()
+
+    def connect_inputs_changed(self, callback) -> None:
+        self.inputs_changed.connect(callback)
+
+    def quick_results(self) -> dict[str, str]:
+        return {}

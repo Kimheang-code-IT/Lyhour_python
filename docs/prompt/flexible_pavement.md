@@ -52,26 +52,27 @@ Fixed right panel: **yes**.
 - Layer moduli E1/E2/E3 (HMA / base / subbase) + subgrade CBR
 - Monthly CBR → CBR_eff → MR (psi) → relative damage uf
 - Effective MR from average uf (AASHTO resilient modulus workflow)
-- Quick results: ESAL, P0, Pt, R0, Effective MR, Average uf
+- Sections 3.1–3.3 (thickness / SN) live on this tab (not MPWT)
+- Quick results: ESAL, P0, Pt, R0, Effective MR, Average uf, Required SN, Total SN, layer thicknesses, Design check
 
-## MPWT logic (current)
+## Thickness / SN (sections 3.1–3.3, AASHTO tab)
 
-- Section 3.1: drainage coefficients `m2`, `m3` only — **do not** show `a1`/`a2`/`a3` ln/log formulas (red-marked in source sheet)
+- Section 3.1: structural coefficients `a1`/`a2`/`a3` and drainage coefficients `m2`/`m3`
 - Section 3.2: min thickness reference (AASHTO vs Japan) + AASHTO SN principle equation
-- Section 3.3: design params (ESAL, R0, S0, P0, Pt, MR, E1–E3) + selected `h1`/`h2`/`h3`
-  - SN labels omit struck-through `a1`/`a2`/`m2`/`a3`/`m3` text; coefficients still computed internally
-  - `a1 = 0.17·ln(E1_MPa) − 0.9259`
-  - `a2 = 0.249·log10(E2_psi) − 0.977`
-  - `a3 = 0.227·log10(E3_psi) − 0.839`
-  - `SNi` uses thickness in inches (`cm / 2.54`)
+- Section 3.3: required SN + selected `h1`/`h2`/`h3` → SN₁ / SN₂ / SN₃ and Total SN check
 - Check: Total SN ≥ Required SN → OK / NG
 - Data: `app/data/mpwt_thickness.py`
+- UI: `app/pages/Flexible_Pavement/mpwt.py` (`ThicknessSnPanel`) embedded in `aashto.py`
+
+## MPWT tab
+
+- Placeholder only. Thickness design was moved to the AASHTO tab.
 
 ## Agent rules
 
 1. Extend Catalog/Analysis inside `catalog_analysis.py`, not inside the shell.
 2. Modulus table styling helpers live in `common.py` (font, row height, summary HTML).
 3. Keep MR formulas in `aashto_resilient_modulus.py`.
-4. Keep MPWT SN / thickness math in `mpwt_thickness.py`; UI in `mpwt.py`.
+4. Keep SN / thickness math in `mpwt_thickness.py`; UI panel in `mpwt.py` (`ThicknessSnPanel`), shown on the AASHTO tab.
 5. If Catalog needs charts, add `app/chart/...` drawers and reuse `MatplotlibChartWidget`.
-6. Connect input changes through `AashtoPage.connect_inputs_changed` / `MpwtPage.connect_inputs_changed` for Quick Panel updates.
+6. Connect input changes through `AashtoPage.connect_inputs_changed` for Quick Panel updates.
