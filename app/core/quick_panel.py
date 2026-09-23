@@ -173,17 +173,11 @@ class QuickPanel(QFrame):
             ("Reliability R0", "Reliability design R0 ="),
             ("Effective MR", "Effective roadbed MR ="),
             ("Average uf", "Average relative damage uf ="),
-            ("Required SN", "Required Total SN ="),
-            ("Total SN", "Total SN (selected) ="),
-            ("HMA h1", "HMA thickness h₁ ="),
-            ("Base h2", "Base thickness h₂ ="),
-            ("Subbase h3", "Subbase thickness h₃ ="),
-            ("Design check", "Design check ="),
         ]
         self._set_schema(fields)
 
     def set_flexible_catalog_schema(self) -> None:
-        """Schema for Flexible Pavement Catalog/Analysis tab."""
+        """Schema for Flexible Pavement Catalog tab."""
         self.set_wide_width()
         fields = [
             ("Seal type", "Seal type ="),
@@ -197,7 +191,7 @@ class QuickPanel(QFrame):
         self._set_schema(fields)
 
     def set_flexible_mpwt_schema(self) -> None:
-        """Schema for Flexible Pavement MPWT tab."""
+        """Schema for Flexible Pavement MPWT Analysis tab."""
         self.set_wide_width()
         fields = [
             ("Required SN", "Required Total SN ="),

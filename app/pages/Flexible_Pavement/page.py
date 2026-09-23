@@ -46,9 +46,9 @@ class FlexiblePavementPage(BasePage):
         self.mpwt_page = None
 
         tab_defs = (
-            ("catalog_analysis", "Catalog/Analysis"),
+            ("catalog_analysis", "Catalog"),
             ("aashto", "AASHTO"),
-            ("mpwt", "MPWT"),
+            ("mpwt", "MPWT Analysis"),
         )
         for index, (route_key, text) in enumerate(tab_defs):
             self.segmented.addItem(

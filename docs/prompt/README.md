@@ -1,5 +1,9 @@
 # Prompt Knowledge Base
 
+> New here / using an AI assistant? Start with the consolidated
+> [`../PROJECT_OVERVIEW.md`](../PROJECT_OVERVIEW.md), then use these prompts for
+> page-specific detail.
+
 Use these prompts as **system knowledge** when working on KIEC Engineering Consulting (Win_UI).
 
 ## How to use

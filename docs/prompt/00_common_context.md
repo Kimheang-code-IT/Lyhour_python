@@ -58,7 +58,7 @@ New charts → add under `app/chart/`, keep formulas in `app/data/`.
 Heavy multi-tab pages use folders of reusable subpages:
 
 - `app/pages/Subgrade_Design/` → DCP, CBR, FWD
-- `app/pages/Flexible_Pavement/` → Catalog/Analysis, AASHTO
+- `app/pages/Flexible_Pavement/` → Catalog, AASHTO, MPWT Analysis
 - `app/pages/Analysis/` → Summary, AADT/PCU, Road Class, Lanes, ESAL
 
 Shell pages compose those subpages (segmented tabs + quick panel).

@@ -68,7 +68,7 @@ _SSD_M = {
 DESIGN_SPEEDS = tuple(sorted(_K_CREST_SSD))
 CURVE_TYPE_OPTIONS = ("Crest", "Sag")
 SIGHT_CRITERION_OPTIONS = ("Stopping SD", "Passing SD", "Decision SD")
-STANDARD_OPTIONS = ("AASHTO 2018",)
+STANDARD_OPTIONS = ("AASHTO 2018", "MPWT Standard")
 
 
 @dataclass(frozen=True)

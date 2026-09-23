@@ -14,6 +14,10 @@ def draw_simple_curve_diagram(
     elements: SimpleCurveElements,
     *,
     title: str = "Geometric Horizontal of Simple Curve Elements",
+    show_tangents: bool = True,
+    show_radius: bool = True,
+    show_labels: bool = True,
+    show_stations: bool = True,
 ) -> None:
     """Draw a schematic PC–PI–PT curve matching standard road-geometry diagrams."""
     import matplotlib.patches as patches
@@ -71,136 +75,143 @@ def draw_simple_curve_diagram(
     green = "#2d8f2d"
     orange = "#d65a00"
 
-    ax.plot([inc_ext[0], pc[0]], [inc_ext[1], pc[1]], color=blue, linewidth=2.0, solid_capstyle="round")
-    ax.plot([pt[0], out_ext[0]], [pt[1], out_ext[1]], color=blue, linewidth=2.0, solid_capstyle="round")
-    ax.plot([pc[0], pi[0]], [pc[1], pi[1]], color=red, linewidth=2.6, solid_capstyle="round")
-    ax.plot([pi[0], pt[0]], [pi[1], pt[1]], color=red, linewidth=2.6, solid_capstyle="round")
+    if show_tangents:
+        ax.plot([inc_ext[0], pc[0]], [inc_ext[1], pc[1]], color=blue, linewidth=2.0, solid_capstyle="round")
+        ax.plot([pt[0], out_ext[0]], [pt[1], out_ext[1]], color=blue, linewidth=2.0, solid_capstyle="round")
+        ax.plot([pc[0], pi[0]], [pc[1], pi[1]], color=red, linewidth=2.6, solid_capstyle="round")
+        ax.plot([pi[0], pt[0]], [pi[1], pt[1]], color=red, linewidth=2.6, solid_capstyle="round")
     ax.plot(arc_x, arc_y, color=red, linewidth=2.2, solid_capstyle="round")
-    ax.plot([center[0], pc[0]], [center[1], pc[1]], color=struct_line, linewidth=1.2)
-    ax.plot([center[0], pt[0]], [center[1], pt[1]], color=struct_line, linewidth=1.2)
+    if show_radius:
+        ax.plot([center[0], pc[0]], [center[1], pc[1]], color=struct_line, linewidth=1.2)
+        ax.plot([center[0], pt[0]], [center[1], pt[1]], color=struct_line, linewidth=1.2)
     ax.plot([pc[0], pt[0]], [pc[1], pt[1]], color=struct_line, linewidth=1.8)
-    ax.text(
-        0.0,
-        float(chord_mid[1]) + tl * 0.045,
-        f"{elements.chord_length_m:.3f}",
-        color=brown,
-        fontsize=9,
-        ha="center",
-        va="bottom",
-        fontweight="bold",
-    )
 
-    ax.annotate(
-        "",
-        xy=external_point,
-        xytext=pi,
-        arrowprops={"arrowstyle": "-|>", "color": green, "lw": 1.6, "mutation_scale": 12},
-    )
-    ax.text(
-        tl * 0.06,
-        (pi[1] + external_point[1]) / 2.0,
-        f"E {elements.external_distance_m:.3f}",
-        color=orange,
-        fontsize=9,
-        ha="left",
-        va="center",
-        fontweight="bold",
-    )
+    if show_labels:
+        ax.text(
+            0.0,
+            float(chord_mid[1]) + tl * 0.045,
+            f"{elements.chord_length_m:.3f}",
+            color=brown,
+            fontsize=9,
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+        )
 
-    ax.annotate(
-        "",
-        xy=ordinate_mid,
-        xytext=chord_mid,
-        arrowprops={"arrowstyle": "<->", "color": blue, "lw": 1.4, "mutation_scale": 10},
-    )
-    ax.text(
-        tl * 0.05,
-        float(ordinate_mid[1] + chord_mid[1]) / 2.0,
-        f"M {elements.middle_ordinate_m:.3f}",
-        color=text_primary,
-        fontsize=9,
-        ha="left",
-        va="center",
-        fontweight="bold",
-    )
+        ax.annotate(
+            "",
+            xy=external_point,
+            xytext=pi,
+            arrowprops={"arrowstyle": "-|>", "color": green, "lw": 1.6, "mutation_scale": 12},
+        )
+        ax.text(
+            tl * 0.06,
+            (pi[1] + external_point[1]) / 2.0,
+            f"E {elements.external_distance_m:.3f}",
+            color=orange,
+            fontsize=9,
+            ha="left",
+            va="center",
+            fontweight="bold",
+        )
 
-    left_mid = (pi + pc) / 2.0
-    right_mid = (pi + pt) / 2.0
-    tl_label = f"TL {elements.tangent_length_m:.3f}"
-    ax.text(
-        float(left_mid[0]) - tl * 0.04,
-        float(left_mid[1]),
-        tl_label,
-        color=red,
-        fontsize=8.5,
-        ha="right",
-        va="center",
-        rotation=math.degrees(math.atan2(pc[1] - pi[1], pc[0] - pi[0])),
-        rotation_mode="anchor",
-    )
-    ax.text(
-        float(right_mid[0]) + tl * 0.04,
-        float(right_mid[1]),
-        tl_label,
-        color=red,
-        fontsize=8.5,
-        ha="left",
-        va="center",
-        rotation=math.degrees(math.atan2(pt[1] - pi[1], pt[0] - pi[0])),
-        rotation_mode="anchor",
-    )
+        ax.annotate(
+            "",
+            xy=ordinate_mid,
+            xytext=chord_mid,
+            arrowprops={"arrowstyle": "<->", "color": blue, "lw": 1.4, "mutation_scale": 10},
+        )
+        ax.text(
+            tl * 0.05,
+            float(ordinate_mid[1] + chord_mid[1]) / 2.0,
+            f"M {elements.middle_ordinate_m:.3f}",
+            color=text_primary,
+            fontsize=9,
+            ha="left",
+            va="center",
+            fontweight="bold",
+        )
 
-    label_angle = (angle_pc + angle_pt) / 2.0
-    label_r = radius + tl * 0.08
-    lcc_x = center[0] + label_r * math.cos(label_angle)
-    lcc_y = center[1] + label_r * math.sin(label_angle)
-    ax.text(
-        lcc_x,
-        lcc_y,
-        f"Lcc (L) {elements.curve_length_m:.2f}",
-        color=text_primary,
-        fontsize=9,
-        ha="center",
-        va="center",
-        fontweight="bold",
-        bbox={"facecolor": tokens.bg_card, "edgecolor": "none", "pad": 1.0, "alpha": 0.85},
-    )
+        left_mid = (pi + pc) / 2.0
+        right_mid = (pi + pt) / 2.0
+        tl_label = f"TL {elements.tangent_length_m:.3f}"
+        ax.text(
+            float(left_mid[0]) - tl * 0.04,
+            float(left_mid[1]),
+            tl_label,
+            color=red,
+            fontsize=8.5,
+            ha="right",
+            va="center",
+            rotation=math.degrees(math.atan2(pc[1] - pi[1], pc[0] - pi[0])),
+            rotation_mode="anchor",
+        )
+        ax.text(
+            float(right_mid[0]) + tl * 0.04,
+            float(right_mid[1]),
+            tl_label,
+            color=red,
+            fontsize=8.5,
+            ha="left",
+            va="center",
+            rotation=math.degrees(math.atan2(pt[1] - pi[1], pt[0] - pi[0])),
+            rotation_mode="anchor",
+        )
 
-    ax.text(
-        0.0,
-        center_y - radius * 0.12,
-        f"Radius(R) {radius:.3f}",
-        color=red,
-        fontsize=10,
-        ha="center",
-        va="top",
-        fontweight="bold",
-    )
+        label_angle = (angle_pc + angle_pt) / 2.0
+        label_r = radius + tl * 0.08
+        lcc_x = center[0] + label_r * math.cos(label_angle)
+        lcc_y = center[1] + label_r * math.sin(label_angle)
+        ax.text(
+            lcc_x,
+            lcc_y,
+            f"Lcc (L) {elements.curve_length_m:.2f}",
+            color=text_primary,
+            fontsize=9,
+            ha="center",
+            va="center",
+            fontweight="bold",
+            bbox={"facecolor": tokens.bg_card, "edgecolor": "none", "pad": 1.0, "alpha": 0.85},
+        )
 
-    angle_arc = patches.Arc(
-        pi,
-        tl * 0.34,
-        tl * 0.34,
-        angle=0,
-        theta1=-90.0 - math.degrees(half_rad),
-        theta2=-90.0 + math.degrees(half_rad),
-        color=green,
-        linewidth=1.4,
-    )
-    ax.add_patch(angle_arc)
-    ax.text(
-        tl * 0.18,
-        -tl * 0.06,
-        format_angle_dms(elements.deflection_deg),
-        color=blue,
-        fontsize=10,
-        ha="left",
-        va="top",
-        fontweight="bold",
-    )
+    if show_radius:
+        ax.text(
+            0.0,
+            center_y - radius * 0.12,
+            f"Radius(R) {radius:.3f}",
+            color=red,
+            fontsize=10,
+            ha="center",
+            va="top",
+            fontweight="bold",
+        )
 
-    station_style = {"fontsize": 9, "color": text_primary, "fontweight": "bold", "ha": "center"}
-    ax.plot(pi[0], pi[1], "o", color=red, markersize=5, zorder=5)
-    ax.text(float(pc[0]), float(pc[1]) - tl * 0.05, "Pc Station", va="top", **station_style)
-    ax.text(float(pi[0]), float(pi[1]) + tl * 0.04, "PI Station", va="bottom", **station_style)
-    ax.text(float(pt[0]), float(pt[1]) - tl * 0.05, "PT Station", va="top", **station_style)
+    if show_labels:
+        angle_arc = patches.Arc(
+            pi,
+            tl * 0.34,
+            tl * 0.34,
+            angle=0,
+            theta1=-90.0 - math.degrees(half_rad),
+            theta2=-90.0 + math.degrees(half_rad),
+            color=green,
+            linewidth=1.4,
+        )
+        ax.add_patch(angle_arc)
+        ax.text(
+            tl * 0.18,
+            -tl * 0.06,
+            format_angle_dms(elements.deflection_deg),
+            color=blue,
+            fontsize=10,
+            ha="left",
+            va="top",
+            fontweight="bold",
+        )
+
+    if show_stations:
+        station_style = {"fontsize": 9, "color": text_primary, "fontweight": "bold", "ha": "center"}
+        ax.plot(pi[0], pi[1], "o", color=red, markersize=5, zorder=5)
+        ax.text(float(pc[0]), float(pc[1]) - tl * 0.05, "Pc Station", va="top", **station_style)
+        ax.text(float(pi[0]), float(pi[1]) + tl * 0.04, "PI Station", va="bottom", **station_style)
+        ax.text(float(pt[0]), float(pt[1]) - tl * 0.05, "PT Station", va="top", **station_style)

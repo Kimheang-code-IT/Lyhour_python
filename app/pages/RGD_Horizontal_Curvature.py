@@ -3,11 +3,14 @@ Road Geometry Design > Horizontal Curvature
 - R_min formula
 - Table lookup
 - Verification
+- Simple-curve diagram + Engineering Results (summary / stakeout)
 - PDF preview + download
 """
 
 import shutil
 from pathlib import Path
+
+from qfluentwidgets import SegmentedWidget
 
 from app.data.tables_Horizontal_Curvature import (
     calc_rmin,
@@ -15,7 +18,14 @@ from app.data.tables_Horizontal_Curvature import (
     lookup_rmin_table,
     get_f_options_for_table_7_5,
 )
+from app.data.simple_curve_geometry import (
+    compute_curve_stakeout,
+    compute_simple_curve_elements,
+    format_angle_dms,
+)
+from app.data.vertical_curve import format_station
 from app.services import pdf_preview as pdf_preview_svc
+from app.core.theme import theme_tokens
 from app.core.ui_style import section_title_style, title_style
 from app.widgets.labeled_input import add_labeled_row
 from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
@@ -26,7 +36,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QScrollArea,
     QFrame,
     QGridLayout,
@@ -35,14 +44,15 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QComboBox,
     QSizePolicy,
-    QApplication,
-    QStyle,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QCheckBox,
 )
-from PyQt6.QtGui import QShowEvent
+from PyQt6.QtGui import QColor, QShowEvent
 from PyQt6.QtCore import Qt
 
 from app.chart import MatplotlibChartWidget, draw_simple_curve_diagram
-from app.data.simple_curve_geometry import compute_simple_curve_elements
 from app.widgets.form_controls import make_combo, make_double_spin
 
 
@@ -55,8 +65,10 @@ except Exception:
 # Vehicle speed options (km/h) — discrete values per Table 7.5 / 7.6
 VEHICLE_SPEED_OPTIONS = [25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130]
 ROW_HEIGHT = 36
-BLOCK_SPACING = 24
-SECTION_TITLE_STYLE = section_title_style(18)
+BLOCK_SPACING = 16
+LEFT_WIDTH = 420
+STAKE_INTERVAL_M = 20.0
+SECTION_TITLE_STYLE = section_title_style(16)
 
 # Friction factor type → hint text shown next to combo
 FRICTION_HINTS = {
@@ -75,6 +87,28 @@ SURFACE_OPTIONS = {
         ["Des max"],               # Friction factor type
     ),
 }
+
+
+def _section_frame(title: str) -> tuple[QFrame, QVBoxLayout]:
+    frame = QFrame()
+    frame.setObjectName("horizontalCurveSection")
+    frame.setStyleSheet(
+        "#horizontalCurveSection { background-color: transparent; "
+        "border: 1px solid #3e3e40; border-radius: 6px; }"
+    )
+    layout = QVBoxLayout(frame)
+    layout.setContentsMargins(14, 10, 14, 12)
+    layout.setSpacing(10)
+    title_label = QLabel(title)
+    title_label.setStyleSheet(SECTION_TITLE_STYLE)
+    layout.addWidget(title_label)
+    frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    return frame, layout
+
+
+def _set_height(widget: QWidget) -> None:
+    widget.setMinimumHeight(ROW_HEIGHT)
+    widget.setMaximumHeight(ROW_HEIGHT)
 
 
 def _set_combo_items(combo: QComboBox, items: list[str], current: str | None = None) -> None:
@@ -126,33 +160,64 @@ class RGDHorizontalCurvaturePage(QWidget):
         # -------------------------
         # Page 0: Form
         # -------------------------
-        form_page = QWidget()
-        form_layout = QVBoxLayout(form_page)
-        form_layout.setContentsMargins(24, 24, 24, 24)
-        form_layout.setSpacing(12)
+        form_page = self._build_form_page()
+
+        # -------------------------
+        # Page 1: PDF Preview
+        # -------------------------
+        self.pdf_preview_page = self._build_pdf_preview_page()
+
+        self.stack.addWidget(form_page)
+        self.stack.addWidget(self.pdf_preview_page)
+
+        self._on_input_changed()
+
+    # -------------------------
+    # Layout: Form (two columns)
+    # -------------------------
+    def _build_form_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        body = QHBoxLayout()
+        body.setSpacing(BLOCK_SPACING)
+        body.addWidget(self._build_input_column(), 0)
+        body.addWidget(self._build_result_column(), 1)
+        layout.addLayout(body, 1)
+        return page
+
+    def _build_input_column(self) -> QWidget:
+        host = QWidget()
+        host.setMinimumWidth(LEFT_WIDTH)
+        host.setMaximumWidth(LEFT_WIDTH + 40)
+        outer = QVBoxLayout(host)
+        outer.setContentsMargins(0, 0, 0, 0)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        inner = QWidget()
+        fit_scroll_content(inner)
+        layout = QVBoxLayout(inner)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(BLOCK_SPACING)
+        layout.addWidget(self._build_input_card())
+        layout.addWidget(self._build_design_card())
+        self.calculate_btn = primary_button("Calculate Geometry", min_height=40, icon="fa5s.bolt")
+        self.calculate_btn.clicked.connect(self._calculate)
+        layout.addWidget(self.calculate_btn)
+        layout.addStretch(0)
+        scroll.setWidget(inner)
+        configure_page_scroll(scroll)
+        outer.addWidget(scroll, 1)
+        return host
 
-        form_widget = QFrame()
-        form_widget.setObjectName("inputSectionFrame")
-        form_widget.setStyleSheet(
-            "#inputSectionFrame { background-color: transparent; border: 1px solid #3e3e40; border-radius: 6px; }"
-        )
-        form_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-
-        input_layout = QVBoxLayout(form_widget)
-        input_layout.setContentsMargins(16, 12, 16, 16)
-        input_layout.setSpacing(12)
-
-        self.input_title = QLabel("Input")
-        self.input_title.setStyleSheet(SECTION_TITLE_STYLE)
-        input_layout.addWidget(self.input_title)
-
-        fields_host = QWidget()
-        form_grid = QGridLayout(fields_host)
+    def _build_input_card(self) -> QFrame:
+        frame, layout = _section_frame("Input")
+        grid_host = QWidget()
+        form_grid = QGridLayout(grid_host)
         form_grid.setHorizontalSpacing(12)
         form_grid.setVerticalSpacing(14)
         form_grid.setContentsMargins(0, 0, 0, 0)
@@ -223,41 +288,27 @@ class RGDHorizontalCurvaturePage(QWidget):
         self.grading_spin.setToolTip("Grading >= 3%")
         self.grading_spin.valueChanged.connect(self._on_input_changed)
         add_labeled_row(form_grid, row, "Grading =", self.grading_spin, ROW_HEIGHT)
-        row += 1
 
         form_grid.setColumnStretch(1, 1)
-        input_layout.addWidget(fields_host)
+        layout.addWidget(grid_host)
+        return frame
 
-        scroll_content = QWidget()
-        fit_scroll_content(scroll_content)
-        scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
-        scroll_layout.setSpacing(BLOCK_SPACING)
-        scroll_layout.addWidget(form_widget)
-
-        # -------------------------
-        # Design block
-        # -------------------------
-        design_widget = QFrame()
-        design_widget.setObjectName("designSectionFrame")
-        design_widget.setStyleSheet(
-            "#designSectionFrame { background-color: transparent; border: 1px solid #3e3e40; border-radius: 6px; }"
-        )
-        design_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-
-        design_layout = QVBoxLayout(design_widget)
-        design_layout.setContentsMargins(16, 12, 16, 16)
-        design_layout.setSpacing(12)
-
-        self.design_title = QLabel("Design")
-        self.design_title.setStyleSheet(SECTION_TITLE_STYLE)
-        design_layout.addWidget(self.design_title)
-
-        design_grid = QGridLayout()
+    def _build_design_card(self) -> QFrame:
+        frame, layout = _section_frame("Design")
+        grid_host = QWidget()
+        design_grid = QGridLayout(grid_host)
         design_grid.setHorizontalSpacing(12)
         design_grid.setVerticalSpacing(14)
+        design_grid.setContentsMargins(0, 0, 0, 0)
 
-        design_row = 0
+        self.design_pc_station_spin = make_double_spin()
+        self.design_pc_station_spin.setRange(0.0, 1_000_000.0)
+        self.design_pc_station_spin.setDecimals(2)
+        self.design_pc_station_spin.setSuffix(" m")
+        self.design_pc_station_spin.setValue(1000.0)
+        self.design_pc_station_spin.setToolTip("PC station used to number the stakeout points")
+        self.design_pc_station_spin.valueChanged.connect(self._on_design_changed)
+        add_labeled_row(design_grid, 0, "PC station =", self.design_pc_station_spin, ROW_HEIGHT)
 
         self.design_radius_spin = make_double_spin()
         self.design_radius_spin.setRange(1.0, 50_000.0)
@@ -266,8 +317,7 @@ class RGDHorizontalCurvaturePage(QWidget):
         self.design_radius_spin.setValue(400.0)
         self.design_radius_spin.setToolTip("Curve radius R")
         self.design_radius_spin.valueChanged.connect(self._on_design_changed)
-        add_labeled_row(design_grid, design_row, "Radius R =", self.design_radius_spin, ROW_HEIGHT)
-        design_row += 1
+        add_labeled_row(design_grid, 1, "Radius R =", self.design_radius_spin, ROW_HEIGHT)
 
         self.design_deflection_spin = make_double_spin()
         self.design_deflection_spin.setRange(0.01, 179.99)
@@ -276,73 +326,94 @@ class RGDHorizontalCurvaturePage(QWidget):
         self.design_deflection_spin.setValue(79.0 + 14.0 / 60.0 + 55.17 / 3600.0)
         self.design_deflection_spin.setToolTip("Deflection angle Δ at PI")
         self.design_deflection_spin.valueChanged.connect(self._on_design_changed)
-        add_labeled_row(design_grid, design_row, "Deflection angle Δ =", self.design_deflection_spin, ROW_HEIGHT)
-        design_row += 1
+        add_labeled_row(design_grid, 2, "Deflection angle Δ =", self.design_deflection_spin, ROW_HEIGHT)
 
         design_grid.setColumnStretch(1, 1)
-        design_layout.addLayout(design_grid)
+        layout.addWidget(grid_host)
+        return frame
 
-        self.design_summary_label = QLabel("")
-        self.design_summary_label.setWordWrap(True)
-        self.design_summary_label.setStyleSheet("color: #cccccc; font-size: 13px; padding: 4px 0;")
-        design_layout.addWidget(self.design_summary_label)
+    def _build_result_column(self) -> QWidget:
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(BLOCK_SPACING)
 
-        self.design_chart = MatplotlibChartWidget(figsize=(8.5, 5.5))
-        self.design_chart.setMinimumHeight(380)
-        design_layout.addWidget(self.design_chart, 1)
+        chart_frame, chart_layout = _section_frame("Profile")
+        chart_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.design_chart = MatplotlibChartWidget(figsize=(8.5, 5.0))
+        self.design_chart.setMinimumHeight(300)
+        chart_layout.addWidget(self.design_chart, 1)
 
-        scroll_layout.addWidget(design_widget, 1)
+        toggles = QHBoxLayout()
+        toggles.setSpacing(16)
+        self.show_tangents = QCheckBox("Show Tangents")
+        self.show_radius = QCheckBox("Show Radius")
+        self.show_labels = QCheckBox("Show Labels")
+        self.show_stations = QCheckBox("Show Stations")
+        for box in (self.show_tangents, self.show_radius, self.show_labels, self.show_stations):
+            box.setChecked(True)
+            box.setStyleSheet("color: #cccccc;")
+            box.toggled.connect(self._redraw_chart)
+            toggles.addWidget(box)
+        toggles.addStretch()
+        chart_layout.addLayout(toggles)
+        layout.addWidget(chart_frame, 3)
 
-        scroll.setWidget(scroll_content)
-        configure_page_scroll(scroll)
-        form_layout.addWidget(scroll, 1)
+        results_frame, results_layout = _section_frame("Engineering Results")
+        self.results_segmented = SegmentedWidget()
+        self.results_stack = QStackedWidget()
+        self.results_segmented.addItem(
+            "summary", "Geometric Summary", onClick=lambda: self.results_stack.setCurrentIndex(0)
+        )
+        self.results_segmented.addItem(
+            "stakeout", "Stakeout Data", onClick=lambda: self.results_stack.setCurrentIndex(1)
+        )
+        self.results_segmented.setCurrentItem("summary")
+        results_layout.addWidget(self.results_segmented)
+        self.summary_table = self._make_table(("Parameter", "Value", "Status"), rows=10)
+        self.stakeout_table = self._make_table(
+            ("Point", "Station", "Deflection", "Chord (m)", "X (m)", "Y (m)"),
+            rows=0,
+        )
+        self.results_stack.addWidget(self.summary_table)
+        self.results_stack.addWidget(self.stakeout_table)
+        results_layout.addWidget(self.results_stack, 1)
+        layout.addWidget(results_frame, 2)
+        return host
 
-        # -------------------------
-        # Page 1: PDF Preview
-        # -------------------------
-        self.pdf_preview_page = self._build_pdf_preview_page()
-
-        self.stack.addWidget(form_page)
-        self.stack.addWidget(self.pdf_preview_page)
-
-        self._on_input_changed()
-        self._refresh_design_chart()
+    def _make_table(self, headers: tuple[str, ...], *, rows: int) -> QTableWidget:
+        table = QTableWidget(rows, len(headers))
+        table.setHorizontalHeaderLabels(list(headers))
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        table.setAlternatingRowColors(True)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.setMinimumHeight(180)
+        return table
 
     # -------------------------
     # Design block
     # -------------------------
-    def _on_design_changed(self) -> None:
-        self._refresh_design_chart()
+    def _on_design_changed(self, *_args) -> None:
+        self._refresh_design()
 
-    def _refresh_design_chart(self) -> None:
+    def _refresh_design(self) -> None:
         radius = float(self.design_radius_spin.value())
         deflection = float(self.design_deflection_spin.value())
         elements = compute_simple_curve_elements(radius, deflection)
 
         if elements is None:
-            self.design_summary_label.setText("Enter radius R > 0 and deflection angle 0° < Δ < 180°.")
+            self.summary_table.setRowCount(0)
+            self.stakeout_table.setRowCount(0)
             if self.design_chart.figure is not None:
                 self.design_chart.clear()
             return
 
-        self.design_summary_label.setText(
-            "TL = {:.3f} m   |   L = {:.3f} m   |   C = {:.3f} m   |   "
-            "E = {:.3f} m   |   M = {:.3f} m".format(
-                elements.tangent_length_m,
-                elements.curve_length_m,
-                elements.chord_length_m,
-                elements.external_distance_m,
-                elements.middle_ordinate_m,
-            )
-        )
-
-        if self.design_chart.figure is None:
-            return
-
-        self.design_chart.figure.clear()
-        ax = self.design_chart.add_subplot(111)
-        draw_simple_curve_diagram(ax, elements)
-        self.design_chart.canvas.draw_idle()
+        self._fill_summary(elements)
+        self._fill_stakeout(elements)
+        self._redraw_chart(elements)
 
     def _sync_design_radius_from_results(self) -> None:
         r_calc = self._results.get("Minimum Radius")
@@ -357,7 +428,102 @@ class RGDHorizontalCurvaturePage(QWidget):
         self.design_radius_spin.blockSignals(True)
         self.design_radius_spin.setValue(round(value, 3))
         self.design_radius_spin.blockSignals(False)
-        self._refresh_design_chart()
+
+    # -------------------------
+    # Charts
+    # -------------------------
+    def _redraw_chart(self, *_args) -> None:
+        if self.design_chart.figure is None or self.design_chart.canvas is None:
+            return
+        elements = compute_simple_curve_elements(
+            float(self.design_radius_spin.value()),
+            float(self.design_deflection_spin.value()),
+        )
+        self.design_chart.figure.clear()
+        if elements is None:
+            self.design_chart.canvas.draw_idle()
+            return
+        ax = self.design_chart.figure.add_subplot(111)
+        draw_simple_curve_diagram(
+            ax,
+            elements,
+            show_tangents=self.show_tangents.isChecked(),
+            show_radius=self.show_radius.isChecked(),
+            show_labels=self.show_labels.isChecked(),
+            show_stations=self.show_stations.isChecked(),
+        )
+        try:
+            self.design_chart.figure.tight_layout()
+        except Exception:
+            pass
+        self.design_chart.canvas.draw_idle()
+
+    # -------------------------
+    # Engineering Results
+    # -------------------------
+    def _fill_summary(self, elements) -> None:
+        r_calc = self._results.get("Minimum Radius")
+        r_table = self._results.get("Minimum Radius from table")
+        r_ongrade = self._results.get("Minimum radius on grade R_min_ongrade")
+        verification = str(self._results.get("Verification") or "")
+        if "Not Ok" in verification:
+            status = "FAIL"
+        elif "Ok" in verification:
+            status = "PASS"
+        else:
+            status = ""
+
+        def _metres(value) -> str:
+            try:
+                return f"{float(value):.3f} m"
+            except (TypeError, ValueError):
+                return "—"
+
+        rows = (
+            ("Radius R", f"{elements.radius_m:.3f} m", ""),
+            ("Deflection Δ", format_angle_dms(elements.deflection_deg), ""),
+            ("Tangent length TL", f"{elements.tangent_length_m:.3f} m", ""),
+            ("Curve length L", f"{elements.curve_length_m:.3f} m", ""),
+            ("Long chord C", f"{elements.chord_length_m:.3f} m", ""),
+            ("External distance E", f"{elements.external_distance_m:.3f} m", ""),
+            ("Middle ordinate M", f"{elements.middle_ordinate_m:.3f} m", ""),
+            ("Minimum radius R_min", _metres(r_calc), status),
+            ("Minimum radius from table", _metres(r_table), ""),
+            ("Minimum radius on grade", _metres(r_ongrade), ""),
+        )
+        self.summary_table.setRowCount(len(rows))
+        accent = QColor(theme_tokens().accent)
+        for r, (name, value, badge) in enumerate(rows):
+            self.summary_table.setItem(r, 0, QTableWidgetItem(name))
+            value_item = QTableWidgetItem(value)
+            value_item.setForeground(accent)
+            self.summary_table.setItem(r, 1, value_item)
+            badge_item = QTableWidgetItem(badge)
+            if "PASS" in badge:
+                badge_item.setForeground(QColor("#4caf7a"))
+            elif "FAIL" in badge:
+                badge_item.setForeground(QColor("#e07070"))
+            self.summary_table.setItem(r, 2, badge_item)
+
+    def _fill_stakeout(self, elements) -> None:
+        points = compute_curve_stakeout(
+            elements.radius_m,
+            elements.deflection_deg,
+            pc_station_m=float(self.design_pc_station_spin.value()),
+            interval_m=STAKE_INTERVAL_M,
+        )
+        self.stakeout_table.setRowCount(len(points))
+        for r, point in enumerate(points):
+            values = (
+                point.name,
+                format_station(point.station_m),
+                format_angle_dms(point.deflection_deg) if point.deflection_deg is not None else "—",
+                f"{point.chord_m:.3f}" if point.chord_m is not None else "—",
+                f"{point.x_m:.3f}",
+                f"{point.y_m:.3f}",
+            )
+            for c, text in enumerate(values):
+                self.stakeout_table.setItem(r, c, QTableWidgetItem(text))
 
     # -------------------------
     # UI: PDF Preview Page
@@ -531,6 +697,7 @@ class RGDHorizontalCurvaturePage(QWidget):
             "Minimum radius on grade R_min_ongrade": r_min_ongrade,
         }
         self._sync_design_radius_from_results()
+        self._refresh_design()
         self._push_to_preview_and_state()
 
     # -------------------------
@@ -543,7 +710,7 @@ class RGDHorizontalCurvaturePage(QWidget):
         else:
             QMessageBox.warning(self, "Invalid input", f"Please enter valid values.\n{data}")
 
-    def _on_input_changed(self):
+    def _on_input_changed(self, *_args):
         self._update_f_combo_from_table()
         ok, data = self._do_compute()
         if ok:

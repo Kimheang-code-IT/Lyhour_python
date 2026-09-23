@@ -1,4 +1,4 @@
-"""Flexible Pavement subpages (Catalog / Analysis, AASHTO, MPWT)."""
+"""Flexible Pavement subpages (Catalog, AASHTO, MPWT Analysis)."""
 
 from app.pages.Flexible_Pavement.aashto import AashtoPage
 from app.pages.Flexible_Pavement.catalog_analysis import CatalogAnalysisPage

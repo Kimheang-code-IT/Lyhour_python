@@ -1,4 +1,4 @@
-"""Flexible Pavement thickness / SN panel (shown on the AASHTO tab)."""
+"""Flexible Pavement thickness / SN panel (MPWT Analysis tab)."""
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -23,6 +24,7 @@ from app.pages.Flexible_Pavement.common import (
 )
 from app.widgets.form_controls import make_double_spin
 from app.widgets.labeled_input import add_labeled_row
+from app.widgets.scroll_utils import configure_page_scroll, fit_scroll_content
 
 try:
     from qfluentwidgets import BodyLabel
@@ -456,26 +458,37 @@ class ThicknessSnPanel(QWidget):
 
 
 class MpwtPage(QWidget):
-    """MPWT tab placeholder — thickness design now lives on the AASHTO tab."""
+    """MPWT Analysis tab — thickness / SN design (sections 3.1–3.3)."""
 
     inputs_changed = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        note = QLabel(
-            "Thickness design (sections 3.1–3.3) is on the AASHTO tab.\n"
-            "MPWT-specific catalog methods can be added here later."
-        )
-        note.setWordWrap(True)
-        note.setStyleSheet("color: #aaaaaa; font-size: 14px;")
-        layout.addWidget(note)
-        layout.addStretch()
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+
+        content = QWidget()
+        fit_scroll_content(content)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(BLOCK_SPACING)
+        self.thickness_panel = ThicknessSnPanel()
+        content_layout.addWidget(self.thickness_panel)
+        content_layout.addStretch(0)
+
+        scroll.setWidget(content)
+        configure_page_scroll(scroll)
+        outer.addWidget(scroll, 1)
 
     def connect_inputs_changed(self, callback) -> None:
-        self.inputs_changed.connect(callback)
+        self.thickness_panel.connect_inputs_changed(callback)
 
     def quick_results(self) -> dict[str, str]:
-        return {}
+        return self.thickness_panel.quick_results()
